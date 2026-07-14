@@ -9,7 +9,7 @@ interface Props {
   subtotal: number;
   itemCount: number;
   currency: string;
-  onConfirm: (amountPaid: number, discount: number, method: PaymentMethod) => void;
+  onConfirm: (amountPaid: number, discount: number, method: PaymentMethod, customerName: string) => void;
   onClose: () => void;
 }
 
@@ -17,6 +17,7 @@ export function CheckoutModal({ subtotal, itemCount, currency, onConfirm, onClos
   const [discount, setDiscount] = useState(0);
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [amountPaid, setAmountPaid] = useState<number>(0);
+  const [customerName, setCustomerName] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const total = Math.max(0, subtotal - discount);
@@ -24,7 +25,7 @@ export function CheckoutModal({ subtotal, itemCount, currency, onConfirm, onClos
 
   const confirm = () => {
     setSubmitting(true);
-    onConfirm(amountPaid, discount, method);
+    onConfirm(amountPaid, discount, method, customerName.trim());
   };
 
   useEffect(() => {
@@ -74,6 +75,19 @@ export function CheckoutModal({ subtotal, itemCount, currency, onConfirm, onClos
             <span className="font-semibold text-gray-800">Total Due</span>
             <span className="text-xl font-bold text-blue-700 font-amount">{formatMoney(total, currency)}</span>
           </div>
+        </div>
+
+        <div>
+          <span className="block text-xs font-medium text-gray-500 mb-2">
+            Customer Name <span className="text-gray-400 font-normal">(optional)</span>
+          </span>
+          <input
+            type="text"
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            placeholder="Walk-in customer"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          />
         </div>
 
         <div>

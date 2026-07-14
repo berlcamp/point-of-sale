@@ -1,10 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { formatMoney } from "@/lib/config";
-import { Printer, Plus, CloudOff } from "lucide-react";
+import { DeliveryReceipt } from "@/components/pos/DeliveryReceipt";
+import { Printer, Plus, CloudOff, Truck, ArrowLeft } from "lucide-react";
 
 export interface ReceiptData {
   receipt_number: string;
+  customer_name?: string | null;
   created_at: string;
   subtotal: number;
   discount: number;
@@ -34,12 +37,16 @@ export function ReceiptModal({
   currency: string;
   onNewTransaction: () => void;
 }) {
+  const [mode, setMode] = useState<"sales" | "delivery">("sales");
   return (
     <div
       className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(15,23,42,0.65)", backdropFilter: "blur(4px)" }}
     >
       <div className="modal-panel w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+        {mode === "delivery" ? (
+          <DeliveryReceipt receipt={receipt} companyName={companyName} currency={currency} />
+        ) : (
         <div className="receipt-print overflow-auto p-6">
           <div className="text-center">
             <h2 className="text-lg font-bold">{companyName}</h2>
@@ -48,6 +55,9 @@ export function ReceiptModal({
             <p className="text-xs text-gray-400">
               {new Date(receipt.created_at).toLocaleString()}
             </p>
+            {receipt.customer_name && (
+              <p className="text-sm mt-1 font-medium">{receipt.customer_name}</p>
+            )}
             {receipt.offline && (
               <p className="mt-1 inline-flex items-center gap-1 text-xs text-amber-600">
                 <CloudOff size={12} /> Queued — will sync when online
@@ -97,21 +107,47 @@ export function ReceiptModal({
           </p>
           <p className="text-center text-sm mt-1 font-medium">Thank you!</p>
         </div>
+        )}
 
-        <div className="no-print border-t border-gray-100 p-4 flex gap-2 bg-gray-50">
-          <button
-            onClick={() => window.print()}
-            className="flex-1 flex items-center justify-center gap-2 border border-gray-300 hover:bg-gray-100 rounded-lg py-2.5 text-sm font-medium text-gray-700"
-          >
-            <Printer size={16} /> Print
-          </button>
-          <button
-            onClick={onNewTransaction}
-            className="flex-1 flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-600 text-white rounded-lg py-2.5 text-sm font-medium"
-          >
-            <Plus size={16} /> New Transaction
-          </button>
-        </div>
+        {mode === "delivery" ? (
+          <div className="no-print border-t border-gray-100 p-4 flex gap-2 bg-gray-50">
+            <button
+              onClick={() => setMode("sales")}
+              className="flex-1 flex items-center justify-center gap-2 border border-gray-300 hover:bg-gray-100 rounded-lg py-2.5 text-sm font-medium text-gray-700"
+            >
+              <ArrowLeft size={16} /> Back to Receipt
+            </button>
+            <button
+              onClick={() => window.print()}
+              className="flex-1 flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-600 text-white rounded-lg py-2.5 text-sm font-medium"
+            >
+              <Printer size={16} /> Print
+            </button>
+          </div>
+        ) : (
+          <div className="no-print border-t border-gray-100 p-4 bg-gray-50 space-y-2">
+            <div className="flex gap-2">
+              <button
+                onClick={() => window.print()}
+                className="flex-1 flex items-center justify-center gap-2 border border-gray-300 hover:bg-gray-100 rounded-lg py-2.5 text-sm font-medium text-gray-700"
+              >
+                <Printer size={16} /> Print
+              </button>
+              <button
+                onClick={() => setMode("delivery")}
+                className="flex-1 flex items-center justify-center gap-2 border border-gray-300 hover:bg-gray-100 rounded-lg py-2.5 text-sm font-medium text-gray-700"
+              >
+                <Truck size={16} /> Delivery Receipt
+              </button>
+            </div>
+            <button
+              onClick={onNewTransaction}
+              className="w-full flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-600 text-white rounded-lg py-2.5 text-sm font-medium"
+            >
+              <Plus size={16} /> New Transaction
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

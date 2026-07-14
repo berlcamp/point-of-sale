@@ -17,6 +17,7 @@ export interface OutboxSale {
   payload: CreateSalePayload;
   receipt: {
     receipt_number: string;
+    customer_name?: string;
     total: number;
     subtotal: number;
     discount: number;

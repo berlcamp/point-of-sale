@@ -4,9 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAdmin } from "@/components/admin/AdminProvider";
 import { Modal } from "@/components/Modal";
+import { DeliveryReceiptModal } from "@/components/pos/DeliveryReceiptModal";
 import { formatMoney } from "@/lib/config";
 import type { Sale, SaleItem } from "@/lib/types";
-import { Undo2 } from "lucide-react";
+import { Undo2, Truck } from "lucide-react";
 
 type Tab = "sales" | "transactions" | "top" | "cashier" | "movements";
 
@@ -23,7 +24,7 @@ function isoDay(d: Date) {
 }
 
 export function ReportsManager() {
-  const { currency } = useAdmin();
+  const { currency, companyName } = useAdmin();
   const [tab, setTab] = useState<Tab>("sales");
   const today = new Date();
   const [from, setFrom] = useState(isoDay(today));
@@ -79,7 +80,7 @@ export function ReportsManager() {
       </div>
 
       {tab === "sales" && <SalesTab range={range} currency={currency} />}
-      {tab === "transactions" && <TransactionsTab range={range} currency={currency} />}
+      {tab === "transactions" && <TransactionsTab range={range} currency={currency} companyName={companyName} />}
       {tab === "top" && <TopTab range={range} currency={currency} />}
       {tab === "cashier" && <CashierTab range={range} currency={currency} />}
       {tab === "movements" && <MovementsTab range={range} />}
@@ -121,12 +122,21 @@ function saleCogs(s: SaleWithCogs) {
   return (s.sale_items ?? []).reduce((sum, it) => sum + Number(it.cost_price) * Number(it.quantity), 0);
 }
 
-function TransactionsTab({ range, currency }: { range: { from: string; to: string }; currency: string }) {
+function TransactionsTab({
+  range,
+  currency,
+  companyName,
+}: {
+  range: { from: string; to: string };
+  currency: string;
+  companyName: string;
+}) {
   const supabase = createClient();
   const [sales, setSales] = useState<SaleWithCogs[]>([]);
   const [loading, setLoading] = useState(true);
   const [receiptQ, setReceiptQ] = useState("");
   const [returnFor, setReturnFor] = useState<Sale | null>(null);
+  const [printSale, setPrintSale] = useState<Sale | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -137,7 +147,10 @@ function TransactionsTab({ range, currency }: { range: { from: string; to: strin
       .lte("created_at", range.to)
       .order("created_at", { ascending: false })
       .limit(200);
-    if (receiptQ.trim()) q = q.ilike("receipt_number", `%${receiptQ.trim()}%`);
+    if (receiptQ.trim()) {
+      const term = receiptQ.trim();
+      q = q.or(`receipt_number.ilike.%${term}%,customer_name.ilike.%${term}%`);
+    }
     const { data } = await q;
     setSales((data as SaleWithCogs[]) ?? []);
     setLoading(false);
@@ -153,7 +166,7 @@ function TransactionsTab({ range, currency }: { range: { from: string; to: strin
       <input
         value={receiptQ}
         onChange={(e) => setReceiptQ(e.target.value)}
-        placeholder="Search receipt #…"
+        placeholder="Search receipt # or customer…"
         className="mb-3 border border-gray-300 rounded-lg px-3 py-2 text-sm w-64"
       />
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
@@ -164,6 +177,7 @@ function TransactionsTab({ range, currency }: { range: { from: string; to: strin
             <thead className="bg-gray-50 text-gray-500 uppercase text-xs">
               <tr>
                 <th className="text-left px-5 py-3">Receipt #</th>
+                <th className="text-left px-5 py-3">Customer</th>
                 <th className="text-left px-5 py-3">Date</th>
                 <th className="text-left px-5 py-3">Payment</th>
                 <th className="text-right px-5 py-3">COGS</th>
@@ -176,6 +190,7 @@ function TransactionsTab({ range, currency }: { range: { from: string; to: strin
               {sales.map((s) => (
                 <tr key={s.id} className="hover:bg-gray-50">
                   <td className="px-5 py-3 font-code">{s.receipt_number}</td>
+                  <td className="px-5 py-3 text-gray-700">{s.customer_name || <span className="text-gray-300">—</span>}</td>
                   <td className="px-5 py-3 text-gray-500">{new Date(s.created_at).toLocaleString()}</td>
                   <td className="px-5 py-3 capitalize">{s.payment_method}</td>
                   <td className="px-5 py-3 text-right font-amount text-gray-500">{formatMoney(saleCogs(s), currency)}</td>
@@ -188,11 +203,16 @@ function TransactionsTab({ range, currency }: { range: { from: string; to: strin
                     )}
                   </td>
                   <td className="px-5 py-3 text-right">
-                    {!s.is_voided && (
-                      <button onClick={() => setReturnFor(s)} className="inline-flex items-center gap-1 text-amber-600 hover:text-amber-700 text-sm">
-                        <Undo2 size={14} /> Return
+                    <div className="inline-flex items-center gap-3">
+                      <button onClick={() => setPrintSale(s)} className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm">
+                        <Truck size={14} /> Delivery Receipt
                       </button>
-                    )}
+                      {!s.is_voided && (
+                        <button onClick={() => setReturnFor(s)} className="inline-flex items-center gap-1 text-amber-600 hover:text-amber-700 text-sm">
+                          <Undo2 size={14} /> Return
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -209,6 +229,14 @@ function TransactionsTab({ range, currency }: { range: { from: string; to: strin
             setReturnFor(null);
             load();
           }}
+        />
+      )}
+      {printSale && (
+        <DeliveryReceiptModal
+          sale={printSale}
+          companyName={companyName}
+          currency={currency}
+          onClose={() => setPrintSale(null)}
         />
       )}
     </div>

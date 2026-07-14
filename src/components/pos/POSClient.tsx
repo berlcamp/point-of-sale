@@ -207,15 +207,17 @@ export function POSClient({ companyId, companyName, currency, userName, role, on
 
   const subtotal = cart.reduce((s, i) => s + i.total, 0);
 
-  const handleCheckout = async (amountPaid: number, discount: number, method: PaymentMethod) => {
+  const handleCheckout = async (amountPaid: number, discount: number, method: PaymentMethod, customerName: string) => {
     const id = crypto.randomUUID();
     const receiptNumber = makeReceiptNumber();
     const createdAt = new Date().toISOString();
     const total = Math.max(0, subtotal - discount);
+    const customer = customerName.trim() || undefined;
 
     const payload: CreateSalePayload = {
       id,
       receipt_number: receiptNumber,
+      customer_name: customer,
       discount,
       amount_paid: amountPaid,
       payment_method: method,
@@ -233,6 +235,7 @@ export function POSClient({ companyId, companyName, currency, userName, role, on
 
     const receiptData: ReceiptData = {
       receipt_number: receiptNumber,
+      customer_name: customer,
       created_at: createdAt,
       subtotal,
       discount,
@@ -264,6 +267,7 @@ export function POSClient({ companyId, companyName, currency, userName, role, on
         payload,
         receipt: {
           receipt_number: receiptNumber,
+          customer_name: customer,
           total,
           subtotal,
           discount,
@@ -439,7 +443,12 @@ export function POSClient({ companyId, companyName, currency, userName, role, on
       )}
 
       {showHistory && (
-        <SalesHistory currency={currency} canVoid={canVoid} onClose={() => setShowHistory(false)} />
+        <SalesHistory
+          companyName={companyName}
+          currency={currency}
+          canVoid={canVoid}
+          onClose={() => setShowHistory(false)}
+        />
       )}
 
       {showPinManager && (

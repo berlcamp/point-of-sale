@@ -95,6 +95,7 @@ export interface Sale {
   company_id: string;
   receipt_number: string;
   customer_id: string | null;
+  customer_name: string | null;
   subtotal: number;
   discount: number;
   total: number;
@@ -162,6 +163,7 @@ export interface AuditLog {
 export interface CreateSalePayload {
   id: string; // client-generated UUID for idempotency
   receipt_number: string;
+  customer_name?: string;
   discount: number;
   amount_paid: number;
   payment_method: PaymentMethod;
