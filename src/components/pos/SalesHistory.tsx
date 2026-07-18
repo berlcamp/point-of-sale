@@ -5,14 +5,14 @@ import { createClient } from "@/lib/supabase/client";
 import { Modal } from "@/components/Modal";
 import { Pagination } from "@/components/Pagination";
 import { DeliveryReceiptModal } from "@/components/pos/DeliveryReceiptModal";
-import { formatMoney } from "@/lib/config";
+import { formatMoney, isUnsettledCollectible, paymentDetail } from "@/lib/config";
 import type { Sale } from "@/lib/types";
 import { Ban, Truck, Search, AlertTriangle } from "lucide-react";
 
 const paymentPill: Record<string, string> = {
   cash: "bg-emerald-100 text-emerald-700",
-  gcash: "bg-blue-100 text-blue-700",
-  card: "bg-violet-100 text-violet-700",
+  cheque: "bg-violet-100 text-violet-700",
+  terms: "bg-amber-100 text-amber-700",
 };
 
 const PAGE_SIZE = 10;
@@ -120,6 +120,12 @@ export function SalesHistory({
                       <span className={`px-2 py-0.5 rounded-full text-xs capitalize ${paymentPill[s.payment_method] ?? "bg-gray-100"}`}>
                         {s.payment_method}
                       </span>
+                      {isUnsettledCollectible(s) && (
+                        <span className="ml-1 px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">unpaid</span>
+                      )}
+                      {paymentDetail(s) && (
+                        <div className="text-xs text-gray-400 mt-0.5">{paymentDetail(s)}</div>
+                      )}
                     </td>
                     <td className="py-2 text-right">
                       <div className="inline-flex items-center gap-3">

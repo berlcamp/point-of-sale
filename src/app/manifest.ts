@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "PointOne POS",
     short_name: "PointOne",
-    description: "Multi-tenant offline-first point of sale",
+    description: "Offline-first point of sale for your store",
     start_url: "/",
     display: "standalone",
     background_color: "#f3f4f6",

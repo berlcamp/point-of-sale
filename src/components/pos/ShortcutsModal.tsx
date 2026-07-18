@@ -6,6 +6,7 @@ import { Modal } from "@/components/Modal";
 // POSClient and this help modal both read from here so they never drift.
 export const POS_SHORTCUTS: { keys: string; label: string }[] = [
   { keys: "F1", label: "Focus product search / scan barcode" },
+  { keys: "Enter", label: "Add exact barcode/SKU match to cart (in search)" },
   { keys: "F4", label: "Checkout current cart" },
   { keys: "Esc", label: "Close the open dialog" },
   { keys: "?", label: "Show this shortcuts list" },

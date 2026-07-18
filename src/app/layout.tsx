@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "PointOne POS",
-  description: "Multi-tenant offline-first point of sale",
+  description: "Offline-first point of sale for your store",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,

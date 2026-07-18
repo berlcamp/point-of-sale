@@ -52,6 +52,28 @@ input[type='number'] {
   animation: modal-panel-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Login page staggered reveal */
+@keyframes login-reveal-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.login-reveal {
+  animation: login-reveal-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-reveal {
+    animation: none;
+  }
+}
+
 /* Typography utilities */
 .font-amount {
   font-family: 'Lora', Georgia, serif;
@@ -80,7 +102,8 @@ input[type='number'] {
     position: absolute;
     left: 0;
     top: 0;
-    width: 80mm;
+    /* Set from the terminal's printer settings (58mm or 80mm roll). */
+    width: var(--receipt-width, 58mm);
   }
   .no-print {
     display: none !important;

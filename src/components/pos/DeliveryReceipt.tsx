@@ -1,13 +1,15 @@
 "use client";
 
-import { formatMoney } from "@/lib/config";
+import { formatMoney, paymentDetail } from "@/lib/config";
 import type { ReceiptData } from "@/components/pos/ReceiptModal";
 
 // The printable warehouse release slip. Presentational only — wrap it in a modal
 // (or render it inline) and trigger printing with window.print(). It reuses the
 // shared `.receipt-print` class + the `@media print` rules in globals.css, so it
-// prints as an isolated 80mm document. Only one `.receipt-print` block may be
-// mounted when printing, or the browser will emit both documents at once.
+// prints as an isolated roll-width document (--receipt-width, from the printer
+// settings). Only one `.receipt-print` block may be mounted when printing, or
+// the browser will emit both documents at once. Thermal printing bypasses this
+// component entirely — see lib/printer/encode.ts.
 export function DeliveryReceipt({
   receipt,
   companyName,
@@ -82,11 +84,18 @@ export function DeliveryReceipt({
           <span className="font-amount">{formatMoney(receipt.total, currency)}</span>
         </div>
         <div className="flex items-center justify-between pt-1">
-          <span className="inline-flex items-center rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-            PAID
-          </span>
+          {receipt.payment_method === "terms" ? (
+            <span className="inline-flex items-center rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+              ON TERMS
+            </span>
+          ) : (
+            <span className="inline-flex items-center rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+              PAID
+            </span>
+          )}
           <span className="text-xs capitalize text-gray-500">
             {receipt.payment_method}
+            {paymentDetail(receipt) ? ` · ${paymentDetail(receipt)}` : ""}
           </span>
         </div>
       </div>

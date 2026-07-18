@@ -24,6 +24,8 @@ export interface OutboxSale {
     amount_paid: number;
     change: number;
     payment_method: string;
+    cheque_date?: string;
+    payment_terms?: string;
     created_at: string;
     cashier_name: string;
     items: {

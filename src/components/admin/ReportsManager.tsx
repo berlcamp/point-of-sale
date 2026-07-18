@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAdmin } from "@/components/admin/AdminProvider";
 import { Modal } from "@/components/Modal";
 import { DeliveryReceiptModal } from "@/components/pos/DeliveryReceiptModal";
-import { formatMoney } from "@/lib/config";
+import { formatMoney, isUnsettledCollectible, paymentDetail } from "@/lib/config";
 import type { Sale, SaleItem } from "@/lib/types";
 import { Undo2, Truck } from "lucide-react";
 
@@ -192,12 +192,19 @@ function TransactionsTab({
                   <td className="px-5 py-3 font-code">{s.receipt_number}</td>
                   <td className="px-5 py-3 text-gray-700">{s.customer_name || <span className="text-gray-300">—</span>}</td>
                   <td className="px-5 py-3 text-gray-500">{new Date(s.created_at).toLocaleString()}</td>
-                  <td className="px-5 py-3 capitalize">{s.payment_method}</td>
+                  <td className="px-5 py-3">
+                    <span className="capitalize">{s.payment_method}</span>
+                    {paymentDetail(s) && (
+                      <div className="text-xs text-gray-400">{paymentDetail(s)}</div>
+                    )}
+                  </td>
                   <td className="px-5 py-3 text-right font-amount text-gray-500">{formatMoney(saleCogs(s), currency)}</td>
                   <td className="px-5 py-3 text-right font-amount">{formatMoney(s.total, currency)}</td>
                   <td className="px-5 py-3">
                     {s.is_voided ? (
                       <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">VOIDED</span>
+                    ) : isUnsettledCollectible(s) ? (
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">UNPAID</span>
                     ) : (
                       <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">OK</span>
                     )}

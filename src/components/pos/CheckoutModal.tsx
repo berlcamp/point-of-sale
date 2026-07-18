@@ -2,14 +2,23 @@
 
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/Modal";
-import { formatMoney, PAYMENT_METHODS, QUICK_AMOUNTS } from "@/lib/config";
+import { formatMoney, PAYMENT_METHODS, PAYMENT_TERMS_OPTIONS, QUICK_AMOUNTS } from "@/lib/config";
 import type { PaymentMethod } from "@/lib/types";
+
+export interface CheckoutDetails {
+  amountPaid: number;
+  discount: number;
+  method: PaymentMethod;
+  customerName: string;
+  chequeDate?: string; // YYYY-MM-DD, when method = 'cheque'
+  paymentTerms?: string; // when method = 'terms'
+}
 
 interface Props {
   subtotal: number;
   itemCount: number;
   currency: string;
-  onConfirm: (amountPaid: number, discount: number, method: PaymentMethod, customerName: string) => void;
+  onConfirm: (details: CheckoutDetails) => void;
   onClose: () => void;
 }
 
@@ -18,24 +27,42 @@ export function CheckoutModal({ subtotal, itemCount, currency, onConfirm, onClos
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [amountPaid, setAmountPaid] = useState<number>(0);
   const [customerName, setCustomerName] = useState("");
+  const [chequeDate, setChequeDate] = useState("");
+  const [paymentTerms, setPaymentTerms] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const total = Math.max(0, subtotal - discount);
-  const change = amountPaid - total;
+  // Terms sales are charged, not paid at the register — nothing is tendered.
+  const isTerms = method === "terms";
+  const change = isTerms ? 0 : amountPaid - total;
+
+  const canConfirm =
+    !submitting &&
+    (isTerms
+      ? paymentTerms !== ""
+      : amountPaid > 0 && change >= 0 && (method !== "cheque" || chequeDate !== ""));
 
   const confirm = () => {
+    if (!canConfirm) return;
     setSubmitting(true);
-    onConfirm(amountPaid, discount, method, customerName.trim());
+    onConfirm({
+      amountPaid: isTerms ? 0 : amountPaid,
+      discount,
+      method,
+      customerName: customerName.trim(),
+      chequeDate: method === "cheque" ? chequeDate : undefined,
+      paymentTerms: isTerms ? paymentTerms : undefined,
+    });
   };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && change >= 0 && amountPaid > 0 && !submitting) confirm();
+      if (e.key === "Enter" && canConfirm) confirm();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [change, amountPaid, submitting]);
+  }, [canConfirm]);
 
   return (
     <Modal
@@ -49,7 +76,7 @@ export function CheckoutModal({ subtotal, itemCount, currency, onConfirm, onClos
           </button>
           <button
             onClick={confirm}
-            disabled={change < 0 || amountPaid <= 0 || submitting}
+            disabled={!canConfirm}
             className="px-5 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white font-semibold disabled:opacity-40"
           >
             {submitting ? "Processing…" : "Complete Sale"}
@@ -109,50 +136,93 @@ export function CheckoutModal({ subtotal, itemCount, currency, onConfirm, onClos
           </div>
         </div>
 
-        <div>
-          <span className="block text-xs font-medium text-gray-500 mb-2">Amount Tendered</span>
-          <input
-            type="number"
-            value={amountPaid || ""}
-            onChange={(e) => setAmountPaid(Number(e.target.value) || 0)}
-            placeholder="0.00"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-lg font-amount focus:ring-2 focus:ring-blue-500 outline-none"
-          />
-          <div className="flex flex-wrap gap-2 mt-2">
-            {QUICK_AMOUNTS.map((a) => (
-              <button
-                key={a}
-                onClick={() => setAmountPaid(a)}
-                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50"
-              >
-                {a.toLocaleString()}
-              </button>
-            ))}
-            <button
-              onClick={() => setAmountPaid(Math.ceil(total))}
-              className="px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 text-sm hover:bg-blue-50"
-            >
-              Exact
-            </button>
+        {method === "cheque" && (
+          <div>
+            <span className="block text-xs font-medium text-gray-500 mb-2">Cheque Date</span>
+            <input
+              type="date"
+              value={chequeDate}
+              onChange={(e) => setChequeDate(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            />
           </div>
-        </div>
+        )}
 
-        <div
-          className={`rounded-xl p-4 flex items-center justify-between ${
-            change >= 0 ? "bg-emerald-50" : "bg-red-50"
-          }`}
-        >
-          <span className={change >= 0 ? "text-emerald-700" : "text-red-700"}>
-            {change >= 0 ? "Change" : "Insufficient"}
-          </span>
-          <span
-            className={`text-xl font-bold font-amount ${
-              change >= 0 ? "text-emerald-700" : "text-red-700"
+        {isTerms && (
+          <div>
+            <span className="block text-xs font-medium text-gray-500 mb-2">Payment Terms</span>
+            <select
+              value={paymentTerms}
+              onChange={(e) => setPaymentTerms(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="">Select terms…</option>
+              {PAYMENT_TERMS_OPTIONS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {!isTerms && (
+          <div>
+            <span className="block text-xs font-medium text-gray-500 mb-2">Amount Tendered</span>
+            <input
+              type="number"
+              value={amountPaid || ""}
+              onChange={(e) => setAmountPaid(Number(e.target.value) || 0)}
+              placeholder="0.00"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-lg font-amount focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+            <div className="flex flex-wrap gap-2 mt-2">
+              {QUICK_AMOUNTS.map((a) => (
+                <button
+                  key={a}
+                  onClick={() => setAmountPaid(a)}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50"
+                >
+                  {a.toLocaleString()}
+                </button>
+              ))}
+              <button
+                onClick={() => setAmountPaid(Math.ceil(total))}
+                className="px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 text-sm hover:bg-blue-50"
+              >
+                Exact
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isTerms ? (
+          <div className="rounded-xl p-4 flex items-center justify-between bg-amber-50">
+            <span className="text-amber-700">
+              Balance Due{paymentTerms ? ` · ${paymentTerms}` : ""}
+            </span>
+            <span className="text-xl font-bold font-amount text-amber-700">
+              {formatMoney(total, currency)}
+            </span>
+          </div>
+        ) : (
+          <div
+            className={`rounded-xl p-4 flex items-center justify-between ${
+              change >= 0 ? "bg-emerald-50" : "bg-red-50"
             }`}
           >
-            {formatMoney(Math.abs(change), currency)}
-          </span>
-        </div>
+            <span className={change >= 0 ? "text-emerald-700" : "text-red-700"}>
+              {change >= 0 ? "Change" : "Insufficient"}
+            </span>
+            <span
+              className={`text-xl font-bold font-amount ${
+                change >= 0 ? "text-emerald-700" : "text-red-700"
+              }`}
+            >
+              {formatMoney(Math.abs(change), currency)}
+            </span>
+          </div>
+        )}
       </div>
     </Modal>
   );

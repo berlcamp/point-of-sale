@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { SignOutButton } from "@/components/SignOutButton";
 import { ProductSearch } from "@/components/pos/ProductSearch";
 import { Cart } from "@/components/pos/Cart";
-import { CheckoutModal } from "@/components/pos/CheckoutModal";
+import { CheckoutModal, type CheckoutDetails } from "@/components/pos/CheckoutModal";
 import { ReceiptModal, type ReceiptData } from "@/components/pos/ReceiptModal";
 import { SalesHistory } from "@/components/pos/SalesHistory";
 import {
@@ -19,10 +19,13 @@ import {
 } from "@/lib/offline/sync";
 import { PinManager } from "@/components/pos/PinManager";
 import { ShortcutsModal } from "@/components/pos/ShortcutsModal";
+import { PrinterSettingsModal } from "@/components/pos/PrinterSettingsModal";
+import { applyReceiptWidth, loadPrinterSettings } from "@/lib/printer/settings";
+import { reconnectThermalPrinter } from "@/lib/printer/thermal";
 import { hasPin } from "@/lib/auth/local";
 import { DEFAULT_TERMINAL_ID, formatMoney } from "@/lib/config";
-import type { CartItem, PaymentMethod, Product, CreateSalePayload, Role } from "@/lib/types";
-import { Wifi, WifiOff, RefreshCw, Lock, KeyRound, Keyboard, X } from "lucide-react";
+import type { CartItem, Product, CreateSalePayload, Role } from "@/lib/types";
+import { Wifi, WifiOff, RefreshCw, Lock, KeyRound, Keyboard, Printer, X } from "lucide-react";
 
 interface Props {
   companyId: string;
@@ -60,6 +63,7 @@ export function POSClient({ companyId, companyName, currency, userName, role, on
   const [pinEnabled, setPinEnabled] = useState(false);
   const [showPinManager, setShowPinManager] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showPrinterSettings, setShowPrinterSettings] = useState(false);
   const [pinNudgeDismissed, setPinNudgeDismissed] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -121,6 +125,11 @@ export function POSClient({ companyId, companyName, currency, userName, role, on
     refreshPending();
     hasPin().then(setPinEnabled);
     searchRef.current?.focus();
+    // Reach the paired thermal printer (if any) so the first receipt prints
+    // without a pairing dialog, and size the browser-print fallback to the roll.
+    const printerSettings = loadPrinterSettings();
+    applyReceiptWidth(printerSettings);
+    reconnectThermalPrinter(printerSettings).catch(() => {});
   }, [loadProducts, loadSummary, refreshPending]);
 
   useEffect(() => {
@@ -207,7 +216,14 @@ export function POSClient({ companyId, companyName, currency, userName, role, on
 
   const subtotal = cart.reduce((s, i) => s + i.total, 0);
 
-  const handleCheckout = async (amountPaid: number, discount: number, method: PaymentMethod, customerName: string) => {
+  const handleCheckout = async ({
+    amountPaid,
+    discount,
+    method,
+    customerName,
+    chequeDate,
+    paymentTerms,
+  }: CheckoutDetails) => {
     const id = crypto.randomUUID();
     const receiptNumber = makeReceiptNumber();
     const createdAt = new Date().toISOString();
@@ -221,6 +237,8 @@ export function POSClient({ companyId, companyName, currency, userName, role, on
       discount,
       amount_paid: amountPaid,
       payment_method: method,
+      cheque_date: chequeDate,
+      payment_terms: paymentTerms,
       terminal_id: DEFAULT_TERMINAL_ID,
       created_at: createdAt,
       items: cart.map((i) => ({
@@ -233,6 +251,9 @@ export function POSClient({ companyId, companyName, currency, userName, role, on
       })),
     };
 
+    // Nothing is tendered on a terms sale, so no change is due.
+    const change = method === "terms" ? 0 : amountPaid - total;
+
     const receiptData: ReceiptData = {
       receipt_number: receiptNumber,
       customer_name: customer,
@@ -241,8 +262,10 @@ export function POSClient({ companyId, companyName, currency, userName, role, on
       discount,
       total,
       amount_paid: amountPaid,
-      change: amountPaid - total,
+      change,
       payment_method: method,
+      cheque_date: chequeDate,
+      payment_terms: paymentTerms,
       cashier_name: userName,
       items: cart.map((i) => ({
         product_name: i.product_name,
@@ -272,8 +295,10 @@ export function POSClient({ companyId, companyName, currency, userName, role, on
           subtotal,
           discount,
           amount_paid: amountPaid,
-          change: amountPaid - total,
+          change,
           payment_method: method,
+          cheque_date: chequeDate,
+          payment_terms: paymentTerms,
           created_at: createdAt,
           cashier_name: userName,
           items: receiptData.items,
@@ -357,6 +382,14 @@ export function POSClient({ companyId, companyName, currency, userName, role, on
             aria-label="Keyboard shortcuts"
           >
             <Keyboard size={16} />
+          </button>
+          <button
+            onClick={() => setShowPrinterSettings(true)}
+            className="bg-blue-600 hover:bg-blue-500 p-2 rounded"
+            title="Receipt printer settings"
+            aria-label="Receipt printer settings"
+          >
+            <Printer size={16} />
           </button>
           <button
             onClick={() => setShowPinManager(true)}
@@ -459,6 +492,13 @@ export function POSClient({ companyId, companyName, currency, userName, role, on
       )}
 
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
+
+      {showPrinterSettings && (
+        <PrinterSettingsModal
+          companyName={companyName}
+          onClose={() => setShowPrinterSettings(false)}
+        />
+      )}
     </div>
   );
 }

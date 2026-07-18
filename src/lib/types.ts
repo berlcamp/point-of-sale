@@ -1,7 +1,7 @@
 // Domain types — snake_case to match the `point_of_sale` Postgres schema directly.
 
 export type Role = "super_admin" | "admin" | "manager" | "cashier";
-export type PaymentMethod = "cash" | "gcash" | "card";
+export type PaymentMethod = "cash" | "cheque" | "terms";
 export type MovementType = "SALE" | "RESTOCK" | "ADJUSTMENT" | "RETURN";
 export type ReturnType = "VOID" | "RETURN";
 export type InvitationStatus = "pending" | "accepted";
@@ -100,6 +100,10 @@ export interface Sale {
   discount: number;
   total: number;
   payment_method: PaymentMethod;
+  cheque_date: string | null; // set when payment_method = 'cheque'
+  payment_terms: string | null; // set when payment_method = 'terms'
+  settled_at: string | null; // cheque/terms only: when the payment was collected
+  settled_by_name: string | null;
   amount_paid: number;
   change: number;
   cashier_id: string | null;
@@ -167,6 +171,8 @@ export interface CreateSalePayload {
   discount: number;
   amount_paid: number;
   payment_method: PaymentMethod;
+  cheque_date?: string; // required when payment_method = 'cheque'
+  payment_terms?: string; // required when payment_method = 'terms'
   terminal_id: string;
   created_at: string;
   items: {

@@ -269,7 +269,12 @@ function ProductForm({
 
       onSaved();
     } catch (e) {
-      setError((e as Error).message);
+      const err = e as { code?: string; message?: string };
+      if (err.code === "23505" && (err.message ?? "").includes("barcode")) {
+        setError("Another product already uses this barcode.");
+      } else {
+        setError(err.message ?? "Failed to save product.");
+      }
     } finally {
       setSaving(false);
     }

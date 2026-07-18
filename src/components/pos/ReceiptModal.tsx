@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { formatMoney } from "@/lib/config";
+import { formatDateOnly, formatMoney } from "@/lib/config";
 import { DeliveryReceipt } from "@/components/pos/DeliveryReceipt";
+import { useReceiptPrinter } from "@/lib/printer/useReceiptPrinter";
 import { Printer, Plus, CloudOff, Truck, ArrowLeft } from "lucide-react";
 
 export interface ReceiptData {
@@ -15,6 +16,8 @@ export interface ReceiptData {
   amount_paid: number;
   change: number;
   payment_method: string;
+  cheque_date?: string | null;
+  payment_terms?: string | null;
   cashier_name: string;
   items: {
     product_name: string;
@@ -38,6 +41,18 @@ export function ReceiptModal({
   onNewTransaction: () => void;
 }) {
   const [mode, setMode] = useState<"sales" | "delivery">("sales");
+  const [printing, setPrinting] = useState(false);
+  const { print } = useReceiptPrinter();
+
+  const handlePrint = async () => {
+    setPrinting(true);
+    try {
+      await print(mode, receipt, companyName, currency);
+    } finally {
+      setPrinting(false);
+    }
+  };
+
   return (
     <div
       className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -94,11 +109,23 @@ export function ReceiptModal({
               <span>Total</span>
               <span className="font-amount">{formatMoney(receipt.total, currency)}</span>
             </div>
-            <Line
-              label={`Paid (${receipt.payment_method})`}
-              value={formatMoney(receipt.amount_paid, currency)}
-            />
-            <Line label="Change" value={formatMoney(receipt.change, currency)} />
+            {receipt.payment_method === "terms" ? (
+              <Line
+                label={`Balance Due (${receipt.payment_terms ?? "terms"})`}
+                value={formatMoney(receipt.total, currency)}
+              />
+            ) : (
+              <>
+                <Line
+                  label={`Paid (${receipt.payment_method})`}
+                  value={formatMoney(receipt.amount_paid, currency)}
+                />
+                {receipt.payment_method === "cheque" && receipt.cheque_date && (
+                  <Line label="Cheque Date" value={formatDateOnly(receipt.cheque_date)} />
+                )}
+                <Line label="Change" value={formatMoney(receipt.change, currency)} />
+              </>
+            )}
           </div>
 
           <hr className="receipt-dash my-4" />
@@ -118,20 +145,22 @@ export function ReceiptModal({
               <ArrowLeft size={16} /> Back to Receipt
             </button>
             <button
-              onClick={() => window.print()}
-              className="flex-1 flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-600 text-white rounded-lg py-2.5 text-sm font-medium"
+              onClick={handlePrint}
+              disabled={printing}
+              className="flex-1 flex items-center justify-center gap-2 bg-blue-700 hover:bg-blue-600 text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-60"
             >
-              <Printer size={16} /> Print
+              <Printer size={16} /> {printing ? "Printing…" : "Print"}
             </button>
           </div>
         ) : (
           <div className="no-print border-t border-gray-100 p-4 bg-gray-50 space-y-2">
             <div className="flex gap-2">
               <button
-                onClick={() => window.print()}
-                className="flex-1 flex items-center justify-center gap-2 border border-gray-300 hover:bg-gray-100 rounded-lg py-2.5 text-sm font-medium text-gray-700"
+                onClick={handlePrint}
+                disabled={printing}
+                className="flex-1 flex items-center justify-center gap-2 border border-gray-300 hover:bg-gray-100 rounded-lg py-2.5 text-sm font-medium text-gray-700 disabled:opacity-60"
               >
-                <Printer size={16} /> Print
+                <Printer size={16} /> {printing ? "Printing…" : "Print"}
               </button>
               <button
                 onClick={() => setMode("delivery")}

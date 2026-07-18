@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Modal } from "@/components/Modal";
 import { DeliveryReceipt } from "@/components/pos/DeliveryReceipt";
 import type { ReceiptData } from "@/components/pos/ReceiptModal";
+import { useReceiptPrinter } from "@/lib/printer/useReceiptPrinter";
 import type { Sale, SaleItem } from "@/lib/types";
 import { Printer } from "lucide-react";
 
@@ -25,6 +26,8 @@ export function DeliveryReceiptModal({
 }) {
   const supabase = createClient();
   const [items, setItems] = useState<SaleItem[] | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const { print } = useReceiptPrinter();
 
   useEffect(() => {
     supabase
@@ -45,6 +48,8 @@ export function DeliveryReceiptModal({
         amount_paid: Number(sale.amount_paid),
         change: Number(sale.change),
         payment_method: sale.payment_method,
+        cheque_date: sale.cheque_date,
+        payment_terms: sale.payment_terms,
         cashier_name: sale.cashier_name ?? "",
         items: items.map((it) => ({
           product_name: it.product_name,
@@ -71,11 +76,19 @@ export function DeliveryReceiptModal({
             Close
           </button>
           <button
-            onClick={() => window.print()}
-            disabled={!receipt}
+            onClick={async () => {
+              if (!receipt) return;
+              setPrinting(true);
+              try {
+                await print("delivery", receipt, companyName, currency);
+              } finally {
+                setPrinting(false);
+              }
+            }}
+            disabled={!receipt || printing}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-50"
           >
-            <Printer size={16} /> Print
+            <Printer size={16} /> {printing ? "Printing…" : "Print"}
           </button>
         </div>
       }

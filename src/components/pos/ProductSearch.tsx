@@ -1,9 +1,9 @@
 "use client";
 
-import { forwardRef, useMemo, useState } from "react";
+import { forwardRef, useEffect, useMemo, useState } from "react";
 import { formatMoney } from "@/lib/config";
 import type { Product } from "@/lib/types";
-import { Plus, Search } from "lucide-react";
+import { CheckCircle2, Plus, Search } from "lucide-react";
 
 interface Props {
   products: Product[];
@@ -14,10 +14,21 @@ interface Props {
 export const ProductSearch = forwardRef<HTMLInputElement, Props>(
   function ProductSearch({ products, currency, onAddToCart }, ref) {
     const [query, setQuery] = useState("");
+    const [justAdded, setJustAdded] = useState<string | null>(null);
+
+    const hasQuery = query.trim().length > 0;
+
+    useEffect(() => {
+      if (!justAdded) return;
+      const t = setTimeout(() => setJustAdded(null), 2500);
+      return () => clearTimeout(t);
+    }, [justAdded]);
 
     const filtered = useMemo(() => {
       const q = query.trim().toLowerCase();
-      if (!q) return products.slice(0, 50);
+      // Show nothing until the cashier searches — full catalogs are too big
+      // to browse at the register.
+      if (!q) return [];
       return products
         .filter(
           (p) =>
@@ -28,6 +39,23 @@ export const ProductSearch = forwardRef<HTMLInputElement, Props>(
         .slice(0, 50);
     }, [products, query]);
 
+    // Scanner flow: scanners "type" the code and send Enter. On Enter, add
+    // an exact barcode/SKU match (or a lone result) straight to the cart
+    // and clear the box for the next scan.
+    const addExactMatch = () => {
+      const q = query.trim().toLowerCase();
+      if (!q) return;
+      const match =
+        products.find((p) => (p.barcode ?? "").toLowerCase() === q) ??
+        products.find((p) => p.sku.toLowerCase() === q) ??
+        (filtered.length === 1 ? filtered[0] : undefined);
+      const unitName = match?.units?.[0]?.unit_name;
+      if (!match || !unitName) return;
+      onAddToCart(match, unitName, 1);
+      setQuery("");
+      setJustAdded(match.name);
+    };
+
     return (
       <div className="flex flex-col h-full">
         <div className="p-4 border-b border-gray-200">
@@ -37,18 +65,42 @@ export const ProductSearch = forwardRef<HTMLInputElement, Props>(
               ref={ref}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addExactMatch();
+                }
+              }}
               placeholder="Search products by name, SKU, or barcode…"
               className="w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
+          {justAdded && (
+            <div className="mt-2 flex items-center gap-1.5 text-sm text-green-700">
+              <CheckCircle2 size={15} />
+              <span className="truncate">Added “{justAdded}” to cart</span>
+            </div>
+          )}
         </div>
-        <div className="flex-1 overflow-auto p-4 grid grid-cols-1 gap-3">
-          {filtered.length === 0 ? (
+        <div className="flex-1 overflow-auto">
+          {!hasQuery ? (
+            <div className="flex flex-col items-center justify-center text-center py-16">
+              <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                <Search className="text-gray-400" size={22} />
+              </div>
+              <p className="text-gray-500 font-medium">Search for a product above</p>
+              <p className="text-gray-400 text-sm mt-1">
+                Type a name or SKU, or scan a barcode to get started.
+              </p>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="text-center text-gray-400 py-10">No products found.</div>
           ) : (
-            filtered.map((p) => (
-              <ProductCard key={p.id} product={p} currency={currency} onAdd={onAddToCart} />
-            ))
+            <div className="divide-y divide-gray-100">
+              {filtered.map((p) => (
+                <ProductRow key={p.id} product={p} currency={currency} onAdd={onAddToCart} />
+              ))}
+            </div>
           )}
         </div>
       </div>
@@ -56,7 +108,7 @@ export const ProductSearch = forwardRef<HTMLInputElement, Props>(
   }
 );
 
-function ProductCard({
+function ProductRow({
   product,
   currency,
   onAdd,
@@ -73,15 +125,15 @@ function ProductCard({
   const low = stock <= Number(product.inventory?.low_stock ?? 0);
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-center justify-between gap-4 hover:shadow-sm transition">
+    <div className="px-4 py-2 flex items-center justify-between gap-4 hover:bg-gray-50 transition">
       <div className="min-w-0">
         <div className="font-medium text-gray-900 truncate">{product.name}</div>
         <div className="text-xs text-gray-400 font-code">
           {product.sku}
           {product.barcode ? ` · ${product.barcode}` : ""}
-        </div>
-        <div className={`text-xs mt-1 font-medium ${low ? "text-red-600" : "text-green-600"}`}>
-          {stock} in stock
+          <span className={`ml-2 font-medium ${low ? "text-red-600" : "text-green-600"}`}>
+            {stock} in stock
+          </span>
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
