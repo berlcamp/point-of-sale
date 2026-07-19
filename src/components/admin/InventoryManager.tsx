@@ -39,6 +39,7 @@ export function InventoryManager() {
     let q = supabase
       .from("products")
       .select("id, name, sku, inventory(quantity, low_stock)")
+      .eq("is_active", true)
       .order("name");
     if (search.trim()) {
       const s = `%${search.trim()}%`;

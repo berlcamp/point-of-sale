@@ -7,9 +7,11 @@ import { Modal } from "@/components/Modal";
 import { Pagination } from "@/components/Pagination";
 import { formatMoney } from "@/lib/config";
 import type { Product, ProductUnit } from "@/lib/types";
-import { Plus, Pencil, Trash2, Search, Package } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Package, Archive, ArchiveRestore } from "lucide-react";
 
 const LIMIT = 10;
+
+type StatusFilter = "active" | "archived" | "all";
 
 interface UnitDraft {
   id?: string;
@@ -25,6 +27,7 @@ export function ProductsManager() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<StatusFilter>("active");
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -38,6 +41,9 @@ export function ProductsManager() {
       })
       .order("name")
       .range((page - 1) * LIMIT, page * LIMIT - 1);
+    if (status !== "all") {
+      q = q.eq("is_active", status === "active");
+    }
     if (search.trim()) {
       const s = `%${search.trim()}%`;
       q = q.or(`name.ilike.${s},sku.ilike.${s},barcode.ilike.${s}`);
@@ -46,7 +52,7 @@ export function ProductsManager() {
     setProducts((data as Product[]) ?? []);
     setTotal(count ?? 0);
     setLoading(false);
-  }, [supabase, page, search]);
+  }, [supabase, page, search, status]);
 
   useEffect(() => {
     const t = setTimeout(load, 300);
@@ -56,6 +62,16 @@ export function ProductsManager() {
   const remove = async (p: Product) => {
     if (!confirm(`Delete "${p.name}"? This cannot be undone.`)) return;
     await supabase.from("products").delete().eq("id", p.id);
+    load();
+  };
+
+  const toggleArchive = async (p: Product) => {
+    if (
+      p.is_active &&
+      !confirm(`Archive "${p.name}"? It will be hidden from the POS and inventory.`)
+    )
+      return;
+    await supabase.from("products").update({ is_active: !p.is_active }).eq("id", p.id);
     load();
   };
 
@@ -77,17 +93,37 @@ export function ProductsManager() {
         </button>
       </div>
 
-      <div className="relative mb-4 max-w-md">
-        <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-        <input
-          value={search}
-          onChange={(e) => {
-            setPage(1);
-            setSearch(e.target.value);
-          }}
-          placeholder="Search by name, SKU, or barcode…"
-          className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-        />
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="relative flex-1 min-w-[16rem] max-w-md">
+          <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+          <input
+            value={search}
+            onChange={(e) => {
+              setPage(1);
+              setSearch(e.target.value);
+            }}
+            placeholder="Search by name, SKU, or barcode…"
+            className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          />
+        </div>
+        <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden text-sm">
+          {(["active", "archived", "all"] as StatusFilter[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => {
+                setPage(1);
+                setStatus(s);
+              }}
+              className={`px-3 py-2 capitalize font-medium ${
+                status === s
+                  ? "bg-blue-700 text-white"
+                  : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
@@ -128,7 +164,7 @@ export function ProductsManager() {
                           : "bg-gray-200 text-gray-500"
                       }`}
                     >
-                      {p.is_active ? "Active" : "Inactive"}
+                      {p.is_active ? "Active" : "Archived"}
                     </span>
                   </td>
                   <td className="px-5 py-3">
@@ -141,6 +177,13 @@ export function ProductsManager() {
                         className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
                       >
                         <Pencil size={16} />
+                      </button>
+                      <button
+                        onClick={() => toggleArchive(p)}
+                        title={p.is_active ? "Archive" : "Unarchive"}
+                        className="p-2 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg"
+                      >
+                        {p.is_active ? <Archive size={16} /> : <ArchiveRestore size={16} />}
                       </button>
                       <button
                         onClick={() => remove(p)}
