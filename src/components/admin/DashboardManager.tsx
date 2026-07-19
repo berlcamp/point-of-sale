@@ -22,17 +22,32 @@ import { Receipt, TrendingUp, DollarSign, AlertTriangle } from "lucide-react";
 
 const PALETTE = ["#2563eb", "#16a34a", "#d97706", "#dc2626", "#7c3aed"];
 
-function dayBounds() {
+const DAY_PRESETS = [
+  { label: "Today", days: 1 },
+  { label: "7d", days: 7 },
+  { label: "30d", days: 30 },
+  { label: "90d", days: 90 },
+];
+
+// Range covering the last `days` days up to end of today (inclusive).
+function rangeForDays(days: number) {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
+  start.setDate(start.getDate() - (days - 1));
+  const end = new Date();
+  end.setHours(0, 0, 0, 0);
   end.setDate(end.getDate() + 1);
   return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function periodLabel(days: number) {
+  return days === 1 ? "today" : `last ${days} days`;
 }
 
 export function DashboardManager() {
   const supabase = createClient();
   const { currency } = useAdmin();
+  const [days, setDays] = useState(1);
   const [summary, setSummary] = useState<{ revenue: number; transactions: number; gross_profit: number } | null>(null);
   const [byDay, setByDay] = useState<{ date: string; revenue: number }[]>([]);
   const [top, setTop] = useState<{ product_name: string; revenue: number }[]>([]);
@@ -40,12 +55,16 @@ export function DashboardManager() {
   const [lowStock, setLowStock] = useState<{ id: string; name: string; quantity: number; low_stock: number }[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Chart always shows a trend of at least a week regardless of the summary range.
+  const chartDays = Math.max(days, 7);
+
   useEffect(() => {
     (async () => {
-      const { start, end } = dayBounds();
+      setLoading(true);
+      const { start, end } = rangeForDays(days);
       const [s, d, t, p, ls] = await Promise.all([
         supabase.rpc("report_summary", { p_from: start, p_to: end }),
-        supabase.rpc("report_sales_by_day", { p_days: 7 }),
+        supabase.rpc("report_sales_by_day", { p_days: chartDays }),
         supabase.rpc("report_top_products", { p_from: start, p_to: end, p_limit: 5 }),
         supabase.rpc("report_payment_breakdown", { p_from: start, p_to: end }),
         supabase
@@ -70,23 +89,42 @@ export function DashboardManager() {
       setLowStock(low);
       setLoading(false);
     })();
-  }, [supabase]);
+  }, [supabase, days, chartDays]);
 
-  if (loading) return <div className="p-10 text-center text-gray-400">Loading dashboard…</div>;
+  const period = periodLabel(days);
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <div className="flex gap-1 bg-white rounded-xl shadow-sm p-1">
+          {DAY_PRESETS.map((p) => (
+            <button
+              key={p.label}
+              onClick={() => setDays(p.days)}
+              className={`px-3 py-1.5 text-sm rounded-lg transition ${
+                days === p.days ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
+      {loading ? (
+        <div className="p-10 text-center text-gray-400">Loading dashboard…</div>
+      ) : (
+      <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={<Receipt size={20} />} label="Today's Transactions" value={String(summary?.transactions ?? 0)} color="blue" />
-        <StatCard icon={<DollarSign size={20} />} label="Today's Revenue" value={formatMoney(summary?.revenue ?? 0, currency)} color="green" />
-        <StatCard icon={<TrendingUp size={20} />} label="Today's Profit" value={formatMoney(summary?.gross_profit ?? 0, currency)} color="violet" />
+        <StatCard icon={<Receipt size={20} />} label={`Transactions (${period})`} value={String(summary?.transactions ?? 0)} color="blue" />
+        <StatCard icon={<DollarSign size={20} />} label={`Revenue (${period})`} value={formatMoney(summary?.revenue ?? 0, currency)} color="green" />
+        <StatCard icon={<TrendingUp size={20} />} label={`Profit (${period})`} value={formatMoney(summary?.gross_profit ?? 0, currency)} color="violet" />
         <StatCard icon={<AlertTriangle size={20} />} label="Low Stock Items" value={String(lowStock.length)} color="red" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card title="Revenue (last 7 days)">
+        <Card title={`Revenue (last ${chartDays} days)`}>
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={byDay}>
               <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
@@ -98,7 +136,7 @@ export function DashboardManager() {
           </ResponsiveContainer>
         </Card>
 
-        <Card title="Top Products (today)">
+        <Card title={`Top Products (${period})`}>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={top} layout="vertical" margin={{ left: 20 }}>
               <XAxis type="number" fontSize={12} stroke="#94a3b8" />
@@ -109,7 +147,7 @@ export function DashboardManager() {
           </ResponsiveContainer>
         </Card>
 
-        <Card title="Payment Methods (today)">
+        <Card title={`Payment Methods (${period})`}>
           {payments.length === 0 ? (
             <Empty />
           ) : (
@@ -153,6 +191,8 @@ export function DashboardManager() {
           )}
         </Card>
       </div>
+      </>
+      )}
     </div>
   );
 }
