@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAdmin } from "@/components/admin/AdminProvider";
 import { Modal } from "@/components/Modal";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { Pagination } from "@/components/Pagination";
 import { formatMoney } from "@/lib/config";
 import type { Product, ProductUnit } from "@/lib/types";
@@ -31,6 +32,10 @@ export function ProductsManager() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [confirming, setConfirming] = useState<{
+    product: Product;
+    kind: "delete" | "archive";
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,19 +65,21 @@ export function ProductsManager() {
   }, [load]);
 
   const remove = async (p: Product) => {
-    if (!confirm(`Delete "${p.name}"? This cannot be undone.`)) return;
     await supabase.from("products").delete().eq("id", p.id);
     load();
   };
 
   const toggleArchive = async (p: Product) => {
-    if (
-      p.is_active &&
-      !confirm(`Archive "${p.name}"? It will be hidden from the POS and inventory.`)
-    )
-      return;
     await supabase.from("products").update({ is_active: !p.is_active }).eq("id", p.id);
     load();
+  };
+
+  const runConfirm = async () => {
+    if (!confirming) return;
+    const { product, kind } = confirming;
+    setConfirming(null);
+    if (kind === "delete") await remove(product);
+    else await toggleArchive(product);
   };
 
   return (
@@ -179,14 +186,18 @@ export function ProductsManager() {
                         <Pencil size={16} />
                       </button>
                       <button
-                        onClick={() => toggleArchive(p)}
+                        onClick={() =>
+                          p.is_active
+                            ? setConfirming({ product: p, kind: "archive" })
+                            : toggleArchive(p)
+                        }
                         title={p.is_active ? "Archive" : "Unarchive"}
                         className="p-2 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg"
                       >
                         {p.is_active ? <Archive size={16} /> : <ArchiveRestore size={16} />}
                       </button>
                       <button
-                        onClick={() => remove(p)}
+                        onClick={() => setConfirming({ product: p, kind: "delete" })}
                         className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg"
                       >
                         <Trash2 size={16} />
@@ -218,6 +229,21 @@ export function ProductsManager() {
             setShowForm(false);
             load();
           }}
+        />
+      )}
+
+      {confirming && (
+        <ConfirmModal
+          title={confirming.kind === "delete" ? "Delete product" : "Archive product"}
+          message={
+            confirming.kind === "delete"
+              ? `Delete "${confirming.product.name}"? This cannot be undone.`
+              : `Archive "${confirming.product.name}"? It will be hidden from the POS and inventory. You can unarchive it later.`
+          }
+          confirmLabel={confirming.kind === "delete" ? "Delete" : "Archive"}
+          variant={confirming.kind === "delete" ? "danger" : "primary"}
+          onConfirm={runConfirm}
+          onClose={() => setConfirming(null)}
         />
       )}
     </div>
