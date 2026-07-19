@@ -34,8 +34,9 @@ export function ProductsManager() {
   const [showForm, setShowForm] = useState(false);
   const [confirming, setConfirming] = useState<{
     product: Product;
-    kind: "delete" | "archive";
+    kind: "delete" | "archive" | "delete-blocked";
   } | null>(null);
+  const [checkingDelete, setCheckingDelete] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,12 +75,24 @@ export function ProductsManager() {
     load();
   };
 
+  // Products with sales history can't be hard-deleted (it would orphan reports
+  // and erase inventory/batch history) — steer the user to Archive instead.
+  const requestDelete = async (p: Product) => {
+    setCheckingDelete(p.id);
+    const { count } = await supabase
+      .from("sale_items")
+      .select("id", { count: "exact", head: true })
+      .eq("product_id", p.id);
+    setCheckingDelete(null);
+    setConfirming({ product: p, kind: count && count > 0 ? "delete-blocked" : "delete" });
+  };
+
   const runConfirm = async () => {
     if (!confirming) return;
     const { product, kind } = confirming;
     setConfirming(null);
     if (kind === "delete") await remove(product);
-    else await toggleArchive(product);
+    else await toggleArchive(product); // "archive" and "delete-blocked" both archive
   };
 
   return (
@@ -197,8 +210,10 @@ export function ProductsManager() {
                         {p.is_active ? <Archive size={16} /> : <ArchiveRestore size={16} />}
                       </button>
                       <button
-                        onClick={() => setConfirming({ product: p, kind: "delete" })}
-                        className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                        onClick={() => requestDelete(p)}
+                        disabled={checkingDelete === p.id}
+                        title="Delete"
+                        className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-40"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -232,20 +247,58 @@ export function ProductsManager() {
         />
       )}
 
-      {confirming && (
+      {confirming?.kind === "archive" && (
         <ConfirmModal
-          title={confirming.kind === "delete" ? "Delete product" : "Archive product"}
-          message={
-            confirming.kind === "delete"
-              ? `Delete "${confirming.product.name}"? This cannot be undone.`
-              : `Archive "${confirming.product.name}"? It will be hidden from the POS and inventory. You can unarchive it later.`
-          }
-          confirmLabel={confirming.kind === "delete" ? "Delete" : "Archive"}
-          variant={confirming.kind === "delete" ? "danger" : "primary"}
+          title="Archive product"
+          message={`Archive "${confirming.product.name}"? It will be hidden from the POS and inventory. You can unarchive it later.`}
+          confirmLabel="Archive"
           onConfirm={runConfirm}
           onClose={() => setConfirming(null)}
         />
       )}
+
+      {confirming?.kind === "delete" && (
+        <ConfirmModal
+          title="Delete product"
+          message={`Permanently delete "${confirming.product.name}"? This product has no sales history and cannot be recovered once deleted.`}
+          confirmLabel="Delete"
+          variant="danger"
+          requireText="DELETE"
+          onConfirm={runConfirm}
+          onClose={() => setConfirming(null)}
+        />
+      )}
+
+      {confirming?.kind === "delete-blocked" &&
+        (confirming.product.is_active ? (
+          <ConfirmModal
+            title="Can't delete this product"
+            message={`"${confirming.product.name}" has sales history, so deleting it would erase its inventory history and break past reports. Archive it instead to hide it from the POS and inventory.`}
+            confirmLabel="Archive instead"
+            onConfirm={runConfirm}
+            onClose={() => setConfirming(null)}
+          />
+        ) : (
+          <Modal
+            title="Can't delete this product"
+            onClose={() => setConfirming(null)}
+            maxWidth="max-w-md"
+            footer={
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setConfirming(null)}
+                  className="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 text-white"
+                >
+                  OK
+                </button>
+              </div>
+            }
+          >
+            <p className="text-sm text-gray-700">
+              {`"${confirming.product.name}" has sales history, so it can't be deleted. It's already archived and hidden from the POS and inventory, and kept for your reports and receipts.`}
+            </p>
+          </Modal>
+        ))}
     </div>
   );
 }
