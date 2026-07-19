@@ -50,7 +50,7 @@ function makeReceiptNumber() {
   return `${DEFAULT_TERMINAL_ID}-${stamp}-${rand}`;
 }
 
-export function POSClient({ companyId, companyName, currency, userName, role, onLock }: Props) {
+export function POSClient({ companyId, companyName, currency, userId, userName, role, onLock }: Props) {
   const supabase = createClient();
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -368,7 +368,7 @@ export function POSClient({ companyId, companyName, currency, userName, role, on
             onClick={() => setShowHistory(true)}
             className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm"
           >
-            Today Sales
+            Sales
           </button>
           {(role === "admin" || role === "manager") && (
             <Link href="/admin" className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm">
@@ -480,6 +480,7 @@ export function POSClient({ companyId, companyName, currency, userName, role, on
           companyName={companyName}
           currency={currency}
           canVoid={canVoid}
+          cashierId={userId}
           onClose={() => setShowHistory(false)}
         />
       )}

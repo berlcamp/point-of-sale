@@ -17,15 +17,22 @@ const paymentPill: Record<string, string> = {
 
 const PAGE_SIZE = 10;
 
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function SalesHistory({
   companyName,
   currency,
   canVoid,
+  cashierId,
   onClose,
 }: {
   companyName: string;
   currency: string;
   canVoid: boolean;
+  cashierId: string;
   onClose: () => void;
 }) {
   const supabase = createClient();
@@ -33,19 +40,24 @@ export function SalesHistory({
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
+  const [date, setDate] = useState(todayStr());
   const [loading, setLoading] = useState(true);
   const [printSale, setPrintSale] = useState<Sale | null>(null);
   const [voidFor, setVoidFor] = useState<Sale | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
+    // Bounds for the selected day, in the browser's local timezone.
+    const start = new Date(`${date}T00:00:00`);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
     const term = search.trim();
     let q = supabase
       .from("sales")
       .select("*, sale_items(id)", { count: "exact" })
+      .eq("cashier_id", cashierId)
       .gte("created_at", start.toISOString())
+      .lt("created_at", end.toISOString())
       .order("created_at", { ascending: false })
       .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
     if (term) q = q.or(`receipt_number.ilike.%${term}%,customer_name.ilike.%${term}%`);
@@ -58,7 +70,7 @@ export function SalesHistory({
     );
     setTotal(count ?? 0);
     setLoading(false);
-  }, [supabase, page, search]);
+  }, [supabase, page, search, date, cashierId]);
 
   useEffect(() => {
     const t = setTimeout(load, 250);
@@ -69,17 +81,28 @@ export function SalesHistory({
 
   return (
     <>
-      <Modal title="Sales Today" onClose={onClose} maxWidth="max-w-3xl">
-        <div className="relative mb-3">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+      <Modal title="Sales" onClose={onClose} maxWidth="max-w-3xl">
+        <div className="mb-3 flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Search by receipt # or customer name…"
+              className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
           <input
-            value={search}
+            type="date"
+            value={date}
             onChange={(e) => {
-              setSearch(e.target.value);
+              setDate(e.target.value);
               setPage(1);
             }}
-            placeholder="Search by receipt # or customer name…"
-            className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
           />
         </div>
 
@@ -87,7 +110,7 @@ export function SalesHistory({
           <div className="py-10 text-center text-gray-400">Loading…</div>
         ) : sales.length === 0 ? (
           <div className="py-10 text-center text-gray-400">
-            {search.trim() ? "No sales match your search." : "No sales yet today."}
+            {search.trim() ? "No sales match your search." : "No sales for this date."}
           </div>
         ) : (
           <>
