@@ -89,6 +89,16 @@ input[type='number'] {
   border-top: 1.5px dashed #cbd5e1;
 }
 
+/* Receipt slip width. Applied on screen AND in print so the preview is exactly
+   what comes out of the printer (WYSIWYG). Set from the terminal's printer
+   settings via applyReceiptWidth() (58mm / 80mm roll, or a compact column on A4). */
+.receipt-print {
+  width: var(--receipt-width, 58mm);
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 /* Print styles for receipts */
 @media print {
   body * {
@@ -97,13 +107,19 @@ input[type='number'] {
   .receipt-print,
   .receipt-print * {
     visibility: visible;
+    /* Keep badge/background colors (e.g. PAID / ON TERMS) so print matches the
+       preview — browsers drop backgrounds otherwise. */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   .receipt-print {
     position: absolute;
     left: 0;
+    right: 0;
     top: 0;
-    /* Set from the terminal's printer settings (58mm or 80mm roll). */
-    width: var(--receipt-width, 58mm);
+    /* Centered on the sheet — matters on A4, a no-op on exact-width rolls. */
+    margin-left: auto;
+    margin-right: auto;
   }
   .no-print {
     display: none !important;

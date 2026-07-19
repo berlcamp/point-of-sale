@@ -230,7 +230,7 @@ export function PrinterSettingsModal({
           </div>
           {settings.paperWidth === "a4" && (
             <p className="text-xs text-gray-500 mt-1.5">
-              Receipts print across the full sheet on a regular A4/Letter printer.
+              Prints the receipt as a centered slip on a regular A4/Letter sheet.
             </p>
           )}
         </div>

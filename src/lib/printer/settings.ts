@@ -56,13 +56,31 @@ export function savePrinterSettings(settings: PrinterSettings) {
   applyReceiptWidth(settings);
 }
 
-// The browser-dialog fallback prints the on-screen receipt; keep its printed
-// width in sync with the configured paper (globals.css reads this var).
-// 180mm spans the printable width of both A4 (210mm) and Letter (216mm).
+// The browser-dialog fallback prints the on-screen receipt. Keep the slip width
+// (--receipt-width, read by globals.css for BOTH preview and print) and the
+// printed page geometry (@page) in sync with the configured paper, so what the
+// cashier previews is what actually prints.
+//
+// On A4/Letter the slip stays a compact centered column — stretching a receipt
+// to the full sheet width reads as broken and never matched the preview.
 export function applyReceiptWidth(settings: PrinterSettings) {
   if (typeof document === "undefined") return;
-  const width = settings.paperWidth === "a4" ? "180mm" : `${settings.paperWidth}mm`;
-  document.documentElement.style.setProperty("--receipt-width", width);
+  const isA4 = settings.paperWidth === "a4";
+  const contentWidth = isA4 ? "80mm" : `${settings.paperWidth}mm`;
+  document.documentElement.style.setProperty("--receipt-width", contentWidth);
+
+  // Drive the print dialog's paper + margins. Thermal rolls print at their exact
+  // width with no margin; A4 uses a normal bordered sheet with the slip centered.
+  const pageRule = isA4
+    ? "@page { size: A4; margin: 10mm; }"
+    : `@page { size: ${settings.paperWidth}mm auto; margin: 0; }`;
+  let style = document.getElementById("pos-receipt-page") as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement("style");
+    style.id = "pos-receipt-page";
+    document.head.appendChild(style);
+  }
+  style.textContent = pageRule;
 }
 
 // Font A on ESC/POS printers: 32 chars per line on 58mm paper, 48 on 80mm.
