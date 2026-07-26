@@ -54,6 +54,18 @@ values (
 on conflict (id) do update
   set company_id = excluded.company_id, full_name = excluded.full_name, role = excluded.role;
 
+-- Membership for the seeded admin. profiles.company_id above is the ACTIVE
+-- company; company_members is the source of truth for what they may access.
+-- (The 0011 backfill covers existing production profiles, but migrations run
+-- before this seed, so a fresh local database needs this explicitly.)
+insert into point_of_sale.company_members (user_id, company_id, role)
+values (
+  '00000000-0000-0000-0000-0000000000a1',
+  '00000000-0000-0000-0000-0000000000b1',
+  'admin'
+)
+on conflict (user_id, company_id) do nothing;
+
 -- 3. A product with a sellable unit + stock, so search/scan + checkout work.
 insert into point_of_sale.products (id, company_id, name, sku, barcode, base_price)
 values (
