@@ -60,9 +60,17 @@ test("super admin can attach a user to another company", async ({ page }) => {
 test("company user count links through to a filtered user list", async ({ page }) => {
   await page.goto("/super-admin");
   const testCoRow = page.locator("tbody tr", { hasText: "Test Co" });
-  await testCoRow.getByRole("link", { name: /\d+/ }).click();
+  const countLink = testCoRow.getByRole("link", { name: /\d+/ });
+  const countText = await countLink.textContent();
+  const expectedCount = Number(countText?.match(/\d+/)?.[0]);
+  expect(Number.isInteger(expectedCount) && expectedCount > 0).toBe(true);
+
+  await countLink.click();
 
   await page.waitForURL(/\/super-admin\/users\?company=/);
+  // The displayed count must match how many rows the filter actually shows —
+  // not just that one particular user happens to be among them.
+  await expect(page.locator("tbody tr")).toHaveCount(expectedCount);
   await expect(page.locator("tbody tr", { hasText: "admin@test.local" })).toHaveCount(1);
 });
 

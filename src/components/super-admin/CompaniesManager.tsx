@@ -34,6 +34,14 @@ export function CompaniesManager() {
     const [{ data: companies }, { data: members }, { data: invites }] =
       await Promise.all([
         supabase.from("companies").select("*").order("created_at", { ascending: false }),
+        // Counts users who BELONG to the company (matches what
+        // /super-admin/users?company= filters to), not who is currently
+        // active there. The is_active filter here only excludes revoked
+        // memberships; nothing in the app sets company_members.is_active to
+        // false today, so this agrees with the filtered list — which does
+        // NOT filter on is_active (it shows revoked memberships struck
+        // through). If a revoke-without-delete feature ships, re-check that
+        // this count and that list still agree.
         supabase.from("company_members").select("company_id").eq("is_active", true),
         supabase.from("invitations").select("*").eq("status", "pending").eq("role", "admin"),
       ]);
