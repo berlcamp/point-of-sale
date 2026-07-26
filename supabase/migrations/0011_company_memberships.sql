@@ -65,7 +65,12 @@ begin
     v_role := new.role;    v_gained  := new.is_active;
   end if;
 
-  select company_id into v_active from point_of_sale.profiles where id = v_user;
+  -- Lock the profile row so the read and the conditional update below are
+  -- serialized against any concurrent membership insert for the same user
+  -- (e.g. two admins claiming the same brand-new email into different
+  -- companies at once). Without this, both transactions can read v_active
+  -- as null and both take the "first membership becomes active" branch.
+  select company_id into v_active from point_of_sale.profiles where id = v_user for update;
 
   if v_gained then
     if v_active is null then
