@@ -105,3 +105,46 @@ drop trigger if exists trg_company_members_sync on point_of_sale.company_members
 create trigger trg_company_members_sync
   after insert or update or delete on point_of_sale.company_members
   for each row execute function point_of_sale.sync_active_membership();
+
+-- ---------------------------------------------------------------------
+-- RLS
+-- ---------------------------------------------------------------------
+alter table point_of_sale.company_members enable row level security;
+
+-- SECURITY DEFINER so the companies policy below never triggers RLS
+-- evaluation on company_members. Mirrors current_company_id().
+create or replace function point_of_sale.my_company_ids()
+returns setof uuid language sql stable security definer set search_path = point_of_sale as $$
+  select company_id from point_of_sale.company_members
+   where user_id = auth.uid() and is_active;
+$$;
+
+grant execute on function point_of_sale.my_company_ids() to authenticated;
+
+drop policy if exists company_members_super_all on point_of_sale.company_members;
+create policy company_members_super_all on point_of_sale.company_members
+  for all using (point_of_sale.is_super_admin())
+  with check (point_of_sale.is_super_admin());
+
+-- Every user can see their own memberships — this is what feeds the switcher.
+drop policy if exists company_members_self_read on point_of_sale.company_members;
+create policy company_members_self_read on point_of_sale.company_members
+  for select using (user_id = auth.uid());
+
+-- A company admin manages the members of the company they are active in.
+drop policy if exists company_members_admin_all on point_of_sale.company_members;
+create policy company_members_admin_all on point_of_sale.company_members
+  for all
+  using (company_id = point_of_sale.current_company_id()
+         and point_of_sale.current_role() = 'admin')
+  with check (company_id = point_of_sale.current_company_id()
+              and point_of_sale.current_role() = 'admin');
+
+-- Widen company reads from "the active company" to "every company I belong
+-- to", so the switcher can render their names. This exposes name/slug/
+-- branding only — every tenant DATA table still gates on
+-- current_company_id(), so no cross-company product, sale, or report row
+-- becomes reachable.
+drop policy if exists companies_member_read on point_of_sale.companies;
+create policy companies_member_read on point_of_sale.companies
+  for select using (id in (select point_of_sale.my_company_ids()));
