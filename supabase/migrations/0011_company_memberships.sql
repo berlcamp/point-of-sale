@@ -203,3 +203,104 @@ begin
 end $$;
 
 grant execute on function point_of_sale.switch_company(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- Invitations become per-company. The old index allowed only ONE pending
+-- invitation per email across the whole platform.
+-- ---------------------------------------------------------------------
+drop index if exists point_of_sale.idx_invitations_pending_email;
+create unique index if not exists idx_invitations_pending_company_email
+  on point_of_sale.invitations (company_id, lower(email))
+  where status = 'pending';
+
+-- ---------------------------------------------------------------------
+-- claim_invitation() — now claims EVERY pending invitation for the caller's
+-- email as its own membership, instead of bailing out once a profile
+-- exists. That early return meant an existing user invited to a second
+-- company was never linked. Still idempotent, still safe on every sign-in.
+-- ---------------------------------------------------------------------
+create or replace function point_of_sale.claim_invitation()
+returns void language plpgsql security definer set search_path = point_of_sale as $$
+declare
+  v_uid   uuid := auth.uid();
+  v_email text;
+  v_name  text;
+  v_inv   record;
+begin
+  if v_uid is null then return; end if;
+
+  select email,
+         coalesce(raw_user_meta_data->>'full_name', raw_user_meta_data->>'name', email)
+    into v_email, v_name
+    from auth.users where id = v_uid;
+
+  if v_email is null then return; end if;
+
+  -- Platform super admin bootstrap: no company, no memberships.
+  if lower(v_email) = 'berlcamp@gmail.com' then
+    insert into point_of_sale.profiles (id, company_id, full_name, email, role)
+    values (v_uid, null, v_name, v_email, 'super_admin')
+    on conflict (id) do update set role = 'super_admin';
+    return;
+  end if;
+
+  for v_inv in
+    select * from point_of_sale.invitations
+     where lower(email) = lower(v_email) and status = 'pending'
+     order by created_at
+  loop
+    -- The profile must exist before a membership can project onto it.
+    -- company_id stays null here; the sync trigger adopts the first
+    -- membership as the active one.
+    insert into point_of_sale.profiles (id, company_id, full_name, email, role)
+    values (v_uid, null, v_name, v_email, v_inv.role)
+    on conflict (id) do nothing;
+
+    insert into point_of_sale.company_members (user_id, company_id, role)
+    values (v_uid, v_inv.company_id, v_inv.role)
+    on conflict (user_id, company_id)
+      do update set role = excluded.role, is_active = true;
+
+    update point_of_sale.invitations set status = 'accepted' where id = v_inv.id;
+  end loop;
+
+  -- No invitations and no existing profile → user lands on /not-authorized.
+end $$;
+
+-- ---------------------------------------------------------------------
+-- handle_new_user() — same multi-invitation logic on the trigger path, so
+-- first-ever sign-in and later sign-ins agree.
+-- ---------------------------------------------------------------------
+create or replace function point_of_sale.handle_new_user()
+returns trigger language plpgsql security definer set search_path = point_of_sale as $$
+declare
+  v_name text := coalesce(new.raw_user_meta_data->>'full_name',
+                          new.raw_user_meta_data->>'name', new.email);
+  v_inv  record;
+begin
+  if lower(new.email) = 'berlcamp@gmail.com' then
+    insert into point_of_sale.profiles (id, company_id, full_name, email, role)
+    values (new.id, null, v_name, new.email, 'super_admin')
+    on conflict (id) do update set role = 'super_admin';
+    return new;
+  end if;
+
+  for v_inv in
+    select * from point_of_sale.invitations
+     where lower(email) = lower(new.email) and status = 'pending'
+     order by created_at
+  loop
+    insert into point_of_sale.profiles (id, company_id, full_name, email, role)
+    values (new.id, null, v_name, new.email, v_inv.role)
+    on conflict (id) do nothing;
+
+    insert into point_of_sale.company_members (user_id, company_id, role)
+    values (new.id, v_inv.company_id, v_inv.role)
+    on conflict (user_id, company_id)
+      do update set role = excluded.role, is_active = true;
+
+    update point_of_sale.invitations set status = 'accepted' where id = v_inv.id;
+  end loop;
+
+  return new;
+end $$;
