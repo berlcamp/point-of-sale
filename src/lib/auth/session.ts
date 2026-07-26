@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { fetchMemberships } from "@/lib/auth/memberships";
 import type { Profile } from "@/lib/types";
 
 // Fetches the signed-in user's profile joined with their company.
@@ -24,5 +25,10 @@ export async function getProfile(): Promise<Profile | null> {
     .eq("id", user.id)
     .maybeSingle();
 
-  return (data as Profile) ?? null;
+  if (!data) return null;
+
+  return {
+    ...(data as Profile),
+    memberships: await fetchMemberships(supabase, user.id),
+  };
 }

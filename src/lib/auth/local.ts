@@ -14,6 +14,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { isOnline } from "@/lib/offline/sync";
 import { db } from "@/lib/offline/db";
+import { fetchMemberships } from "@/lib/auth/memberships";
 import type { Profile } from "@/lib/types";
 
 const KEY = "current";
@@ -60,7 +61,12 @@ export async function getLocalProfile(): Promise<Profile | null> {
       .eq("id", session.user.id)
       .maybeSingle();
     if (data) {
-      const profile = data as Profile;
+      // Memberships ride along on the cached profile. Switching is online-only,
+      // so a stale cached list is never actionable offline.
+      const profile: Profile = {
+        ...(data as Profile),
+        memberships: await fetchMemberships(supabase, session.user.id),
+      };
       await cacheProfile(profile);
       return profile;
     }

@@ -19,6 +19,20 @@ export interface Company {
   created_at: string;
 }
 
+// One (user, company, role) edge. A user with more than one of these sees
+// the store switcher; the active one is projected onto profiles.company_id.
+export interface Membership {
+  company_id: string;
+  role: Role;
+  is_active: boolean;
+  company: {
+    id: string;
+    name: string;
+    slug: string;
+    is_active: boolean;
+  };
+}
+
 export interface Profile {
   id: string;
   company_id: string | null;
@@ -28,6 +42,7 @@ export interface Profile {
   is_active: boolean;
   created_at: string;
   company?: Company | null;
+  memberships?: Membership[];
 }
 
 export interface Invitation {
