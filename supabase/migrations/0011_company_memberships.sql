@@ -166,8 +166,13 @@ begin
     raise exception 'Not authenticated';
   end if;
 
+  -- Lock the membership row before checking is_active: the membership IS
+  -- the authorization, so this must be serialized against a concurrent
+  -- revoke or the check below can pass against a stale snapshot and let a
+  -- just-revoked user's switch through anyway.
   select * into v_m from point_of_sale.company_members
-   where user_id = v_uid and company_id = p_company_id;
+   where user_id = v_uid and company_id = p_company_id
+   for update;
   if not found then
     raise exception 'You are not a member of that store';
   end if;
@@ -175,7 +180,9 @@ begin
     raise exception 'Your access to that store has been revoked';
   end if;
 
-  select * into v_c from point_of_sale.companies where id = p_company_id;
+  -- for share (not for update): blocks a concurrent deactivation of this
+  -- company without serializing every other user's switch into it.
+  select * into v_c from point_of_sale.companies where id = p_company_id for share;
   if not found or not v_c.is_active then
     raise exception 'That store is not active';
   end if;
