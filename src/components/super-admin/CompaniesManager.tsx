@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Modal } from "@/components/Modal";
 import { LoginBackgroundEditor } from "@/components/settings/LoginBackgroundEditor";
@@ -30,16 +31,16 @@ export function CompaniesManager() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: companies }, { data: profiles }, { data: invites }] =
+    const [{ data: companies }, { data: members }, { data: invites }] =
       await Promise.all([
         supabase.from("companies").select("*").order("created_at", { ascending: false }),
-        supabase.from("profiles").select("company_id"),
+        supabase.from("company_members").select("company_id").eq("is_active", true),
         supabase.from("invitations").select("*").eq("status", "pending").eq("role", "admin"),
       ]);
 
     const counts = new Map<string, number>();
-    (profiles ?? []).forEach((p: { company_id: string | null }) => {
-      if (p.company_id) counts.set(p.company_id, (counts.get(p.company_id) ?? 0) + 1);
+    (members ?? []).forEach((m: { company_id: string }) => {
+      counts.set(m.company_id, (counts.get(m.company_id) ?? 0) + 1);
     });
     const pending = new Map<string, string>();
     (invites as Invitation[] | null ?? []).forEach((i) => pending.set(i.company_id, i.email));
@@ -110,9 +111,12 @@ export function CompaniesManager() {
                     <div className="text-gray-400 text-xs font-code">{c.slug}</div>
                   </td>
                   <td className="px-5 py-3">
-                    <span className="inline-flex items-center gap-1 text-gray-600">
+                    <Link
+                      href={`/super-admin/users?company=${c.id}`}
+                      className="inline-flex items-center gap-1 text-gray-600 hover:text-blue-600 hover:underline"
+                    >
                       <Users size={14} /> {c.userCount}
-                    </span>
+                    </Link>
                   </td>
                   <td className="px-5 py-3 text-gray-600">
                     {c.pendingAdmin ? (

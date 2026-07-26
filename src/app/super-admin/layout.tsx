@@ -2,6 +2,7 @@ import { getProfile } from "@/lib/auth/session";
 import { SignOutButton } from "@/components/SignOutButton";
 import { ShieldCheck } from "lucide-react";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 export default async function SuperAdminLayout({
   children,
@@ -32,6 +33,20 @@ export default async function SuperAdminLayout({
           <SignOutButton />
         </div>
       </header>
+      <nav className="bg-slate-800 px-6 flex gap-1 text-sm">
+        <Link
+          href="/super-admin"
+          className="px-4 py-2.5 text-slate-300 hover:text-white hover:bg-slate-700"
+        >
+          Companies
+        </Link>
+        <Link
+          href="/super-admin/users"
+          className="px-4 py-2.5 text-slate-300 hover:text-white hover:bg-slate-700"
+        >
+          Users
+        </Link>
+      </nav>
       <main className="flex-1 overflow-auto">{children}</main>
     </div>
   );
