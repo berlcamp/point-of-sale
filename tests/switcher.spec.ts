@@ -93,3 +93,40 @@ test("POS switcher cannot switch stores once the terminal goes offline", async (
 
   await page.context().setOffline(false);
 });
+
+test("POS switcher cannot switch stores while a sale is queued in the outbox", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByPlaceholder(/Search products/i)).toBeVisible();
+
+  // Force create_sale to fail so checkout falls back to the offline outbox,
+  // without ever going offline — this isolates the `pending > 0` half of the
+  // gate from real connectivity. switch_company is left reachable, so if the
+  // gate were broken the RPC would genuinely succeed: no CDP-level masking
+  // like the offline test above.
+  await page.route("**/rest/v1/rpc/create_sale", (route) =>
+    route.fulfill({ status: 500, contentType: "application/json", body: "{}" })
+  );
+
+  // Ring up a seeded product (SKU LATTE-01, per supabase/seed.sql) and pay cash.
+  await page.getByPlaceholder(/Search products/i).fill("LATTE-01");
+  await page.getByRole("button", { name: "Add" }).click();
+  await page.getByRole("button", { name: "Checkout" }).click();
+  await expect(page.getByText("Payment Method")).toBeVisible();
+  await page.getByRole("button", { name: "Cash", exact: true }).click();
+  await page.getByRole("button", { name: "Exact" }).click();
+  await page.getByRole("button", { name: "Complete Sale" }).click();
+  await expect(page.getByRole("button", { name: /New Transaction/i })).toBeVisible();
+
+  // The queued sale shows in the header, and the switcher is disabled with
+  // the pending-specific message — never opens, never lets a click through.
+  await expect(page.getByRole("button", { name: /1 pending/i })).toBeVisible();
+  const switcher = page.getByRole("button", { name: /Switch store/i });
+  await expect(switcher).toBeDisabled();
+  await expect(switcher).toHaveAttribute("title", "Sync 1 pending sale first");
+
+  // A disabled <button> doesn't dispatch click handlers even when forced.
+  await switcher.click({ force: true }).catch(() => {});
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(switcher).toContainText("Test Co");
+  await expect(page).toHaveURL(/\/$/);
+});
