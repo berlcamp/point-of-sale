@@ -29,6 +29,7 @@
 
 **Files:**
 - Create: `supabase/migrations/0011_company_memberships.sql`
+- Modify: `supabase/seed.sql`
 
 **Interfaces:**
 - Consumes: nothing.
@@ -95,16 +96,64 @@ Expected: FAIL with `ERROR:  relation "point_of_sale.company_members" does not e
 Run: `npm run db:reset`
 Expected: completes without error.
 
-- [ ] **Step 4: Verify the table and backfill**
+- [ ] **Step 4: Give the seeded admin a membership**
 
-Run:
+`supabase db reset` runs **all migrations before `seed.sql`**, so on a fresh local
+database the migration's backfill correctly finds nothing — `profiles` is still
+empty when 0011 executes. The backfill exists for the *production* database,
+where profiles already carry a `company_id`.
 
-```bash
-psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" -c \
-  "select user_id, company_id, role, is_active from point_of_sale.company_members;"
+That means the seed must now create memberships itself. After this migration
+`company_members` is the source of truth for who belongs where, so a seed that
+inserts a profile with a `company_id` but no membership row builds an
+inconsistent fixture — the user would have an active company they are not a
+member of.
+
+In `supabase/seed.sql`, immediately after the `insert into point_of_sale.profiles`
+statement (the one for Ada Admin) and before the `-- 3. A product…` comment, add:
+
+```sql
+-- Membership for the seeded admin. profiles.company_id above is the ACTIVE
+-- company; company_members is the source of truth for what they may access.
+-- (The 0011 backfill covers existing production profiles, but migrations run
+-- before this seed, so a fresh local database needs this explicitly.)
+insert into point_of_sale.company_members (user_id, company_id, role)
+values (
+  '00000000-0000-0000-0000-0000000000a1',
+  '00000000-0000-0000-0000-0000000000b1',
+  'admin'
+)
+on conflict (user_id, company_id) do nothing;
 ```
 
-Expected: exactly 1 row — user `00000000-0000-0000-0000-0000000000a1`, company `00000000-0000-0000-0000-0000000000b1`, role `admin`, active `t`. That is the seeded admin from `supabase/seed.sql`, backfilled.
+- [ ] **Step 5: Verify the table, the seed membership, and the backfill logic**
+
+Run: `npm run db:reset`
+
+```bash
+psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" <<'SQL'
+select 'seeded',
+       count(*) = 1 as one_membership,
+       bool_and(user_id = '00000000-0000-0000-0000-0000000000a1') as right_user,
+       bool_and(company_id = '00000000-0000-0000-0000-0000000000b1') as right_company,
+       bool_and(role = 'admin') as role_carried,
+       bool_and(is_active) as active
+  from point_of_sale.company_members;
+
+-- The backfill statement is idempotent: replaying it changes nothing.
+insert into point_of_sale.company_members (user_id, company_id, role, is_active)
+select p.id, p.company_id, p.role, true
+  from point_of_sale.profiles p
+ where p.company_id is not null
+   and p.role <> 'super_admin'
+on conflict (user_id, company_id) do nothing;
+
+select 'backfill-idempotent', count(*) = 1 as still_one
+  from point_of_sale.company_members;
+SQL
+```
+
+Expected: every boolean column prints `t`.
 
 Also confirm the enum guard holds:
 
@@ -116,7 +165,7 @@ psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" -c \
 
 Expected: FAIL with `violates check constraint "company_members_role_not_super"`.
 
-- [ ] **Step 5: Append the projection trigger**
+- [ ] **Step 6: Append the projection trigger**
 
 Append to `supabase/migrations/0011_company_memberships.sql`:
 
@@ -186,11 +235,12 @@ create trigger trg_company_members_sync
   for each row execute function point_of_sale.sync_active_membership();
 ```
 
-- [ ] **Step 6: Re-apply and verify the trigger's three behaviours**
+- [ ] **Step 7: Re-apply and verify the trigger's four behaviours**
 
 Run: `npm run db:reset`
 
-Then run this script, which exercises role-mirroring, adoption, and revocation:
+Then run this script, which exercises role-mirroring, adoption, and revocation.
+It relies on the seed membership added in Step 4:
 
 ```bash
 psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" <<'SQL'
@@ -227,12 +277,12 @@ SQL
 
 Expected: every boolean column prints `t` across rows A, B, C, and D.
 
-- [ ] **Step 7: Reset to clean state and commit**
+- [ ] **Step 8: Reset to clean state and commit**
 
 Run: `npm run db:reset` (discards the probe rows the verification script created)
 
 ```bash
-git add supabase/migrations/0011_company_memberships.sql
+git add supabase/migrations/0011_company_memberships.sql supabase/seed.sql
 git commit -m "feat(db): add company_members table with active-membership projection"
 ```
 
@@ -763,10 +813,10 @@ values
 on conflict (id) do update
   set company_id = excluded.company_id, full_name = excluded.full_name, role = excluded.role;
 
--- Memberships. admin@test.local is Admin in Test Co and Cashier in Second Co,
--- which is what lets the switcher test prove the role follows the switch.
+-- Memberships. Task 1 already added admin@test.local's Admin membership in
+-- Test Co; adding Cashier in Second Co is what lets the switcher test prove
+-- the role follows the switch.
 insert into point_of_sale.company_members (user_id, company_id, role) values
-  ('00000000-0000-0000-0000-0000000000a1','00000000-0000-0000-0000-0000000000b1','admin'),
   ('00000000-0000-0000-0000-0000000000a1','00000000-0000-0000-0000-0000000000b2','cashier'),
   ('00000000-0000-0000-0000-0000000000a3','00000000-0000-0000-0000-0000000000b1','cashier')
 on conflict (user_id, company_id) do nothing;
