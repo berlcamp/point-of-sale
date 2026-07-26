@@ -68,3 +68,28 @@ test("POS header shows the switcher and names the active store", async ({ page }
   await switcher.click();
   await expect(page.getByRole("menuitem", { name: /Second Co/ })).toBeVisible();
 });
+
+test("POS switcher cannot switch stores once the terminal goes offline", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByPlaceholder(/Search products/i)).toBeVisible();
+
+  // Open the menu while still online, then drop the connection.
+  const switcher = page.getByRole("button", { name: /Switch store/i });
+  await switcher.click();
+  const secondCo = page.getByRole("menuitem", { name: /Second Co/ });
+  await expect(secondCo).toBeVisible();
+
+  await page.context().setOffline(true);
+  // The gate must close the already-open menu, not merely grey the trigger —
+  // a menu item that stays mounted and clickable is a live path to a switch
+  // that shouldn't be possible. (Clicking through page.context().setOffline
+  // also kills the RPC's network request at the CDP level, which would mask
+  // this exact bug by making the switch fail for the wrong reason — so the
+  // menu closing is the assertion that actually exercises the client-side
+  // gate rather than incidental network unavailability.)
+  await expect(secondCo).not.toBeVisible();
+  await expect(switcher).toContainText("Test Co");
+  await expect(page).toHaveURL(/\/$/);
+
+  await page.context().setOffline(false);
+});

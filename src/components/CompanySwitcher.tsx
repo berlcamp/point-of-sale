@@ -47,12 +47,21 @@ export function CompanySwitcher({
     };
   }, [open]);
 
+  // If the gate closes (offline, or a sale lands in the outbox) while the
+  // menu happens to be open, force it shut. Otherwise an already-rendered
+  // menu item stays mounted and clickable — the trigger greys out, but
+  // nothing stops the click that's already reachable.
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+
   // One store means there is nothing to switch between.
   if (memberships.length <= 1) return null;
 
   const active = memberships.find((m) => m.company_id === activeCompanyId);
 
   const choose = async (m: Membership) => {
+    if (disabled) return;
     if (m.company_id === activeCompanyId || !m.company.is_active || busy) return;
     setBusy(true);
     setError(null);
@@ -109,7 +118,7 @@ export function CompanySwitcher({
                 key={m.company_id}
                 role="menuitem"
                 onClick={() => choose(m)}
-                disabled={closed || busy}
+                disabled={disabled || closed || busy}
                 className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <span className="min-w-0">
