@@ -33,9 +33,24 @@ export default defineConfig({
   projects: [
     { name: "setup", testMatch: /auth\.setup\.ts/ },
     {
+      // Default account: admin@test.local, Admin in Test Co + Cashier in Second Co.
       name: "chromium",
       use: { ...devices["Desktop Chrome"], storageState: "tests/.auth/state.json" },
       dependencies: ["setup"],
+      testIgnore: [/auth\.setup\.ts/, /switcher-solo\.spec\.ts/, /super-admin\.spec\.ts/],
+    },
+    {
+      // Single-company account, for proving the switcher stays hidden.
+      name: "chromium-solo",
+      use: { ...devices["Desktop Chrome"], storageState: "tests/.auth/solo.json" },
+      dependencies: ["setup"],
+      testMatch: /switcher-solo\.spec\.ts/,
+    },
+    {
+      name: "chromium-super",
+      use: { ...devices["Desktop Chrome"], storageState: "tests/.auth/super.json" },
+      dependencies: ["setup"],
+      testMatch: /super-admin\.spec\.ts/,
     },
   ],
   webServer: {

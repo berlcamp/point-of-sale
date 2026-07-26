@@ -16,48 +16,55 @@ if (typeof globalThis.WebSocket === "undefined") {
 // Supabase URL, so they agree on cookie names — no hand-rolled encoding, and
 // no Google OAuth needed. See supabase/seed.sql for the credentials.
 
-const STORAGE = "tests/.auth/state.json";
-const EMAIL = "admin@test.local";
+// One storage state per seeded user, so specs can pick the account whose
+// membership shape they need. See supabase/seed.sql for the fixtures.
+const USERS = [
+  { file: "tests/.auth/state.json", email: "admin@test.local" }, // 2 companies
+  { file: "tests/.auth/solo.json", email: "solo@test.local" },   // 1 company
+  { file: "tests/.auth/super.json", email: "super@test.local" }, // platform super admin
+];
 const PASSWORD = "password123";
 
-setup("authenticate", async () => {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) {
-    throw new Error(
-      "NEXT_PUBLIC_SUPABASE_URL / ANON_KEY missing. Run `node scripts/gen-test-env.mjs` (needs `supabase start`)."
-    );
-  }
+for (const user of USERS) {
+  setup(`authenticate ${user.email}`, async () => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !anon) {
+      throw new Error(
+        "NEXT_PUBLIC_SUPABASE_URL / ANON_KEY missing. Run `node scripts/gen-test-env.mjs` (needs `supabase start`)."
+      );
+    }
 
-  const captured: { name: string; value: string }[] = [];
-  const supabase = createServerClient(url, anon, {
-    cookies: {
-      getAll: () => [],
-      setAll: (cookies) => {
-        for (const c of cookies) captured.push({ name: c.name, value: c.value });
+    const captured: { name: string; value: string }[] = [];
+    const supabase = createServerClient(url, anon, {
+      cookies: {
+        getAll: () => [],
+        setAll: (cookies) => {
+          for (const c of cookies) captured.push({ name: c.name, value: c.value });
+        },
       },
-    },
+    });
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: PASSWORD,
+    });
+    if (error) throw new Error(`Seed login failed for ${user.email}: ${error.message}`);
+    if (captured.length === 0) throw new Error(`No auth cookies emitted for ${user.email}`);
+
+    const expires = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7; // 1 week
+    const cookies = captured.map((c) => ({
+      name: c.name,
+      value: c.value,
+      domain: "localhost",
+      path: "/",
+      expires,
+      httpOnly: false,
+      secure: false,
+      sameSite: "Lax" as const,
+    }));
+
+    mkdirSync("tests/.auth", { recursive: true });
+    writeFileSync(user.file, JSON.stringify({ cookies, origins: [] }, null, 2));
   });
-
-  const { error } = await supabase.auth.signInWithPassword({
-    email: EMAIL,
-    password: PASSWORD,
-  });
-  if (error) throw new Error(`Seed login failed: ${error.message}`);
-  if (captured.length === 0) throw new Error("No auth cookies were emitted by sign-in");
-
-  const expires = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7; // 1 week
-  const cookies = captured.map((c) => ({
-    name: c.name,
-    value: c.value,
-    domain: "localhost",
-    path: "/",
-    expires,
-    httpOnly: false,
-    secure: false,
-    sameSite: "Lax" as const,
-  }));
-
-  mkdirSync("tests/.auth", { recursive: true });
-  writeFileSync(STORAGE, JSON.stringify({ cookies, origins: [] }, null, 2));
-});
+}
