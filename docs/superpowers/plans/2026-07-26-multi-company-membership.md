@@ -21,6 +21,23 @@
 - `role` values are the `point_of_sale.user_role` enum: `super_admin`, `admin`, `manager`, `cashier`. `super_admin` is a platform role and is never a membership.
 - Two distinct `is_active` flags — do not conflate: `profiles.is_active` is account-wide and blocks sign-in; `company_members.is_active` revokes one company only.
 - Local Postgres for verification: `postgresql://postgres:postgres@127.0.0.1:55522/postgres`. This port is **this machine's** current value — confirm with `npx supabase status` (field `DB_URL`) before running any psql command, and use whatever it reports. Requires `supabase start`.
+- **Impersonating a user in psql requires a transaction.** `SET LOCAL` outside one is a silent no-op, so a script that omits `begin` runs as superuser `postgres` with RLS **bypassed entirely** — and will print passing results even against a database where the migration was never applied. Every RLS check must therefore be wrapped:
+
+  ```sql
+  begin;
+    -- seed any probe rows here, as superuser
+    set local role authenticated;
+    set local request.jwt.claims = '{"sub":"<user-uuid>","role":"authenticated"}';
+    -- Prove impersonation actually took effect BEFORE trusting any result.
+    select 'impersonating',
+           current_user = 'authenticated' as as_authenticated,
+           auth.uid() = '<user-uuid>' as as_user;
+    -- ... the actual RLS assertions ...
+  rollback;
+  ```
+
+  `rollback` also keeps probe rows from leaking into the next script. Never trust an RLS assertion whose script did not first print `as_authenticated = t` and `as_user = t`.
+- A trailing `container is not ready` line from `npm run db:reset` is not proof of success or failure either way. Confirm the outcome by querying row counts with psql — a reset has been observed to fail on the **db** container and leave the database with no schema at all.
 - E2E suite is run with `npm run test:e2e`; a schema change requires `npm run db:reset` first.
 
 ---
@@ -496,28 +513,37 @@ Run: `npm run db:reset`
 
 ```bash
 psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" <<'SQL'
-insert into point_of_sale.companies (id, name, slug)
-  values ('00000000-0000-0000-0000-0000000000b8','Switch Probe','switch-probe'),
-         ('00000000-0000-0000-0000-0000000000b7','Dead Probe','dead-probe');
-update point_of_sale.companies set is_active = false
-  where id = '00000000-0000-0000-0000-0000000000b7';
-insert into point_of_sale.company_members (user_id, company_id, role) values
-  ('00000000-0000-0000-0000-0000000000a1','00000000-0000-0000-0000-0000000000b8','cashier'),
-  ('00000000-0000-0000-0000-0000000000a1','00000000-0000-0000-0000-0000000000b7','cashier');
+begin;
+  insert into point_of_sale.companies (id, name, slug)
+    values ('00000000-0000-0000-0000-0000000000b8','Switch Probe','switch-probe');
+  insert into point_of_sale.company_members (user_id, company_id, role) values
+    ('00000000-0000-0000-0000-0000000000a1','00000000-0000-0000-0000-0000000000b8','cashier');
 
-set local role authenticated;
-set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
+  set local role authenticated;
+  set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
 
--- Happy path: switching also drags the role along.
-select point_of_sale.switch_company('00000000-0000-0000-0000-0000000000b8');
-select 'switched',
-       company_id = '00000000-0000-0000-0000-0000000000b8' as active_moved,
-       role = 'cashier' as role_moved
-  from point_of_sale.profiles where id = '00000000-0000-0000-0000-0000000000a1';
+  -- Impersonation must be real before anything below means anything.
+  select 'impersonating',
+         current_user = 'authenticated' as as_authenticated,
+         auth.uid() = '00000000-0000-0000-0000-0000000000a1' as as_user;
+
+  -- Happy path: switching also drags the role along.
+  select point_of_sale.switch_company('00000000-0000-0000-0000-0000000000b8');
+  select 'switched',
+         company_id = '00000000-0000-0000-0000-0000000000b8' as active_moved,
+         role = 'cashier' as role_moved
+    from point_of_sale.profiles where id = '00000000-0000-0000-0000-0000000000a1';
+
+  -- The switch is audited against the TARGET company.
+  select 'audited', count(*) = 1 as logged
+    from point_of_sale.audit_logs
+   where action = 'COMPANY_SWITCHED'
+     and company_id = '00000000-0000-0000-0000-0000000000b8';
+rollback;
 SQL
 ```
 
-Expected: `active_moved = t`, `role_moved = t`.
+Expected: `as_authenticated = t`, `as_user = t`, then `active_moved = t`, `role_moved = t`, `logged = t`. If the impersonation row does not print `t` twice, the script is running as superuser and every result below it is meaningless.
 
 Now the three refusals — run each separately and confirm each raises:
 
@@ -698,31 +724,41 @@ Run: `npm run db:reset`
 
 ```bash
 psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" <<'SQL'
-insert into point_of_sale.companies (id, name, slug)
-  values ('00000000-0000-0000-0000-0000000000b8','Invite Probe','invite-probe');
+begin;
+  insert into point_of_sale.companies (id, name, slug)
+    values ('00000000-0000-0000-0000-0000000000b8','Invite Probe','invite-probe');
 
--- Fix 1: two pending invitations for one email now coexist.
-insert into point_of_sale.invitations (company_id, email, role) values
-  ('00000000-0000-0000-0000-0000000000b1','dual@test.local','cashier'),
-  ('00000000-0000-0000-0000-0000000000b8','dual@test.local','manager');
-select 'fix1', count(*) = 2 as both_pending
-  from point_of_sale.invitations where email = 'dual@test.local';
+  -- Fix 1: two pending invitations for one email now coexist.
+  insert into point_of_sale.invitations (company_id, email, role) values
+    ('00000000-0000-0000-0000-0000000000b1','dual@test.local','cashier'),
+    ('00000000-0000-0000-0000-0000000000b8','dual@test.local','manager');
+  select 'fix1', count(*) = 2 as both_pending
+    from point_of_sale.invitations where email = 'dual@test.local';
 
--- Fix 2: an ALREADY-PROVISIONED user claims an invitation to a new company.
-insert into point_of_sale.invitations (company_id, email, role)
-  values ('00000000-0000-0000-0000-0000000000b8','admin@test.local','manager');
+  -- Fix 2: an ALREADY-PROVISIONED user claims an invitation to a new company.
+  insert into point_of_sale.invitations (company_id, email, role)
+    values ('00000000-0000-0000-0000-0000000000b8','admin@test.local','manager');
 
-set local role authenticated;
-set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
-select point_of_sale.claim_invitation();
-select 'fix2', count(*) = 2 as now_two_memberships
-  from point_of_sale.company_members
- where user_id = '00000000-0000-0000-0000-0000000000a1';
-select 'fix2-active', company_id = '00000000-0000-0000-0000-0000000000b1' as active_unchanged,
-       role = 'admin' as role_unchanged
-  from point_of_sale.profiles where id = '00000000-0000-0000-0000-0000000000a1';
+  set local role authenticated;
+  set local request.jwt.claims = '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
+
+  -- Impersonation must be real before anything below means anything.
+  select 'impersonating',
+         current_user = 'authenticated' as as_authenticated,
+         auth.uid() = '00000000-0000-0000-0000-0000000000a1' as as_user;
+
+  select point_of_sale.claim_invitation();
+  select 'fix2', count(*) = 2 as now_two_memberships
+    from point_of_sale.company_members
+   where user_id = '00000000-0000-0000-0000-0000000000a1';
+  select 'fix2-active', company_id = '00000000-0000-0000-0000-0000000000b1' as active_unchanged,
+         role = 'admin' as role_unchanged
+    from point_of_sale.profiles where id = '00000000-0000-0000-0000-0000000000a1';
+rollback;
 SQL
 ```
+
+`claim_invitation()` is `security definer`, so it runs with the definer's rights regardless — but `auth.uid()` inside it resolves from the impersonated claims, which is exactly what the test depends on. If the impersonation row does not print `t` twice, every result below it is meaningless.
 
 Expected: `both_pending = t`, `now_two_memberships = t`, and `active_unchanged = t` / `role_unchanged = t` — claiming a second invitation must **not** move the user out of the company they are currently working in.
 
