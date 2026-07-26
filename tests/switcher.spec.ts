@@ -130,3 +130,29 @@ test("POS switcher cannot switch stores while a sale is queued in the outbox", a
   await expect(switcher).toContainText("Test Co");
   await expect(page).toHaveURL(/\/$/);
 });
+
+test("POS switcher shows an error when switch_company itself fails, without closing the menu", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByPlaceholder(/Search products/i)).toBeVisible();
+
+  // The common failure path: terminal is online, outbox is empty (gate never
+  // flips), but switch_company refuses server-side — e.g. "not a member",
+  // "access revoked", "store not active". Nothing about this case closes the
+  // menu, so the error has to render inside/near the still-open menu.
+  await page.route("**/rest/v1/rpc/switch_company", (route) =>
+    route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({ message: "You are not a member of that store" }),
+    })
+  );
+
+  const switcher = page.getByRole("button", { name: /Switch store/i });
+  await switcher.click();
+  await page.getByRole("menuitem", { name: /Second Co/ }).click();
+
+  await expect(page.getByRole("menu")).toBeVisible();
+  await expect(page.getByText("You are not a member of that store")).toBeVisible();
+  await expect(switcher).toContainText("Test Co");
+  await expect(page).toHaveURL(/\/$/);
+});

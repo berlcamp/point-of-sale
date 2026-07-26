@@ -102,48 +102,55 @@ export function CompanySwitcher({
         <ChevronDown size={14} />
       </button>
 
-      {open && (
+      {/* One container serves both a failure while the menu is still open
+          (the common case — switch_company itself refuses, e.g. "not a
+          member" / "access revoked" / "store not active") and a failure
+          that arrives after the gate has force-closed the menu mid-flight
+          (disabled flips true while choose()'s RPC is in flight — see the
+          closing effect above). Rendering the error unconditionally here,
+          rather than nested inside an `open`-only block, means neither case
+          loses the message. */}
+      {(open || error) && (
         <div
-          role="menu"
+          {...(open ? { role: "menu" } : {})}
           className="absolute left-0 z-50 mt-1 w-64 overflow-hidden rounded-xl bg-white text-gray-800 shadow-2xl ring-1 ring-black/5"
         >
-          <p className="px-3 pt-2 pb-1 text-xs font-medium uppercase tracking-wide text-gray-400">
-            Switch store
-          </p>
-          {memberships.map((m) => {
-            const isActive = m.company_id === activeCompanyId;
-            const closed = !m.company.is_active;
-            return (
-              <button
-                key={m.company_id}
-                role="menuitem"
-                onClick={() => choose(m)}
-                disabled={disabled || closed || busy}
-                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <span className="min-w-0">
-                  <span className="block truncate font-medium">{m.company.name}</span>
-                  <span className="block text-xs text-gray-500">
-                    {ROLE_LABELS[m.role]}
-                    {closed && " · closed"}
-                  </span>
-                </span>
-                {isActive && <Check size={16} className="shrink-0 text-blue-600" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Rendered outside `open` on purpose: if `disabled` flips true while a
-          switch is in flight (e.g. connectivity drops mid-RPC), the closing
-          effect above unmounts the menu immediately, before the RPC settles.
-          Keeping the error surface independent of `open` means a failure
-          reported after that point still has somewhere to render instead of
-          vanishing silently. */}
-      {error && !open && (
-        <div className="absolute left-0 z-50 mt-1 w-64 overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/5">
-          <p className="bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>
+          {open && (
+            <>
+              <p className="px-3 pt-2 pb-1 text-xs font-medium uppercase tracking-wide text-gray-400">
+                Switch store
+              </p>
+              {memberships.map((m) => {
+                const isActive = m.company_id === activeCompanyId;
+                const closed = !m.company.is_active;
+                return (
+                  <button
+                    key={m.company_id}
+                    role="menuitem"
+                    onClick={() => choose(m)}
+                    disabled={disabled || closed || busy}
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{m.company.name}</span>
+                      <span className="block text-xs text-gray-500">
+                        {ROLE_LABELS[m.role]}
+                        {closed && " · closed"}
+                      </span>
+                    </span>
+                    {isActive && <Check size={16} className="shrink-0 text-blue-600" />}
+                  </button>
+                );
+              })}
+            </>
+          )}
+          {error && (
+            <p
+              className={`px-3 py-2 text-xs text-red-600 bg-red-50 ${open ? "border-t border-gray-100" : ""}`}
+            >
+              {error}
+            </p>
+          )}
         </div>
       )}
     </div>
