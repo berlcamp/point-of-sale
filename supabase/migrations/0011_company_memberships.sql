@@ -148,3 +148,51 @@ create policy company_members_admin_all on point_of_sale.company_members
 drop policy if exists companies_member_read on point_of_sale.companies;
 create policy companies_member_read on point_of_sale.companies
   for select using (id in (select point_of_sale.my_company_ids()));
+
+-- ---------------------------------------------------------------------
+-- switch_company(company_id) — the ONLY path that changes a user's tenant,
+-- and therefore the single place the rules are enforced. Rewrites the
+-- profiles projection so every downstream policy and RPC follows.
+-- ---------------------------------------------------------------------
+create or replace function point_of_sale.switch_company(p_company_id uuid)
+returns jsonb language plpgsql security definer set search_path = point_of_sale as $$
+declare
+  v_uid  uuid := auth.uid();
+  v_m    point_of_sale.company_members%rowtype;
+  v_c    point_of_sale.companies%rowtype;
+  v_name text;
+begin
+  if v_uid is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  select * into v_m from point_of_sale.company_members
+   where user_id = v_uid and company_id = p_company_id;
+  if not found then
+    raise exception 'You are not a member of that store';
+  end if;
+  if not v_m.is_active then
+    raise exception 'Your access to that store has been revoked';
+  end if;
+
+  select * into v_c from point_of_sale.companies where id = p_company_id;
+  if not found or not v_c.is_active then
+    raise exception 'That store is not active';
+  end if;
+
+  update point_of_sale.profiles
+     set company_id = p_company_id, role = v_m.role
+   where id = v_uid
+  returning full_name into v_name;
+
+  insert into point_of_sale.audit_logs (
+    company_id, user_id, user_name, action, entity_type, entity_id, details
+  ) values (
+    p_company_id, v_uid, v_name, 'COMPANY_SWITCHED', 'company', p_company_id::text,
+    jsonb_build_object('company_name', v_c.name, 'role', v_m.role)
+  );
+
+  return to_jsonb(v_c);
+end $$;
+
+grant execute on function point_of_sale.switch_company(uuid) to authenticated;
