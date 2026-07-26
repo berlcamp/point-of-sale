@@ -74,6 +74,7 @@ export function POSBoot({ profile }: { profile: Profile }) {
       userId={effective.id}
       userName={effective.full_name ?? effective.email}
       role={effective.role}
+      memberships={effective.memberships ?? []}
       onLock={() => setLocked(true)}
     />
   );

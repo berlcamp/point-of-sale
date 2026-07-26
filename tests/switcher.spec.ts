@@ -56,3 +56,15 @@ test("switching to a store where the user is a cashier redirects out of /admin",
   await page.getByPlaceholder(/Search products/i).fill("SCONE-02");
   await expect(page.getByText("Second Scone")).toBeVisible();
 });
+
+test("POS header shows the switcher and names the active store", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByPlaceholder(/Search products/i)).toBeVisible();
+
+  const switcher = page.getByRole("button", { name: /Switch store/i });
+  await expect(switcher).toBeVisible();
+  await expect(switcher).toContainText("Test Co");
+
+  await switcher.click();
+  await expect(page.getByRole("menuitem", { name: /Second Co/ })).toBeVisible();
+});

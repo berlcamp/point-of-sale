@@ -24,7 +24,8 @@ import { applyReceiptWidth, loadPrinterSettings } from "@/lib/printer/settings";
 import { reconnectThermalPrinter } from "@/lib/printer/thermal";
 import { hasPin } from "@/lib/auth/local";
 import { DEFAULT_TERMINAL_ID, formatMoney } from "@/lib/config";
-import type { CartItem, Product, CreateSalePayload, Role } from "@/lib/types";
+import type { CartItem, Product, CreateSalePayload, Membership, Role } from "@/lib/types";
+import { CompanySwitcher } from "@/components/CompanySwitcher";
 import { Wifi, WifiOff, RefreshCw, Lock, KeyRound, Keyboard, Printer, X } from "lucide-react";
 
 interface Props {
@@ -34,6 +35,7 @@ interface Props {
   userId: string;
   userName: string;
   role: Role;
+  memberships: Membership[];
   onLock?: () => void;
 }
 
@@ -50,7 +52,7 @@ function makeReceiptNumber() {
   return `${DEFAULT_TERMINAL_ID}-${stamp}-${rand}`;
 }
 
-export function POSClient({ companyId, companyName, currency, userId, userName, role, onLock }: Props) {
+export function POSClient({ companyId, companyName, currency, userId, userName, role, memberships, onLock }: Props) {
   const supabase = createClient();
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -338,6 +340,20 @@ export function POSClient({ companyId, companyName, currency, userId, userName, 
       <header className="bg-blue-700 text-white px-6 py-3 flex items-center justify-between shadow-md">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold">{companyName}</h1>
+          {/* Switching is online-only, and never while sales are still queued —
+              that guarantees every queued sale syncs under the store it was
+              rung up in. */}
+          <CompanySwitcher
+            activeCompanyId={companyId}
+            memberships={memberships}
+            redirectTo="/"
+            disabled={!online || pending > 0}
+            disabledReason={
+              !online
+                ? "Reconnect to switch stores"
+                : `Sync ${pending} pending sale${pending === 1 ? "" : "s"} first`
+            }
+          />
           <span className="text-blue-200 text-sm">POS Terminal</span>
           <span
             className={`ml-2 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
