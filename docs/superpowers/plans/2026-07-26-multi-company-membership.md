@@ -534,7 +534,12 @@ begin;
          role = 'cashier' as role_moved
     from point_of_sale.profiles where id = '00000000-0000-0000-0000-0000000000a1';
 
-  -- The switch is audited against the TARGET company.
+  -- The switch is audited against the TARGET company. Drop impersonation
+  -- first: the user is now a CASHIER in the target company, and the
+  -- pre-existing audit_read policy (migration 0002) only lets admins read
+  -- audit_logs — so this assertion is unsatisfiable while impersonating,
+  -- no matter how correct switch_company() is.
+  reset role;
   select 'audited', count(*) = 1 as logged
     from point_of_sale.audit_logs
    where action = 'COMPANY_SWITCHED'
@@ -543,7 +548,7 @@ rollback;
 SQL
 ```
 
-Expected: `as_authenticated = t`, `as_user = t`, then `active_moved = t`, `role_moved = t`, `logged = t`. If the impersonation row does not print `t` twice, the script is running as superuser and every result below it is meaningless.
+Expected: `as_authenticated = t`, `as_user = t`, then `active_moved = t`, `role_moved = t`, `logged = t`. If the impersonation row does not print `t` twice, the script is running as superuser and every result above the `reset role` is meaningless.
 
 Now the three refusals — run each separately and confirm each raises:
 
