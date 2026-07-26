@@ -17,6 +17,7 @@ import {
   pendingCount,
   isOnline,
 } from "@/lib/offline/sync";
+import { switchGate } from "@/lib/offline/switch-gate";
 import { PinManager } from "@/components/pos/PinManager";
 import { ShortcutsModal } from "@/components/pos/ShortcutsModal";
 import { PrinterSettingsModal } from "@/components/pos/PrinterSettingsModal";
@@ -342,17 +343,13 @@ export function POSClient({ companyId, companyName, currency, userId, userName, 
           <h1 className="text-xl font-bold">{companyName}</h1>
           {/* Switching is online-only, and never while sales are still queued —
               that guarantees every queued sale syncs under the store it was
-              rung up in. */}
+              rung up in. switchGate() is shared with the admin sidebar, which
+              sees the very same origin-wide outbox. */}
           <CompanySwitcher
             activeCompanyId={companyId}
             memberships={memberships}
             redirectTo="/"
-            disabled={!online || pending > 0}
-            disabledReason={
-              !online
-                ? "Reconnect to switch stores"
-                : `Sync ${pending} pending sale${pending === 1 ? "" : "s"} first`
-            }
+            {...switchGate(online, pending)}
           />
           <span className="text-blue-200 text-sm">POS Terminal</span>
           <span

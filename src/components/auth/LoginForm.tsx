@@ -11,12 +11,16 @@ import { ShoppingCart, ShieldCheck, WifiOff, Zap } from "lucide-react";
 export function LoginForm({
   bgUrl,
   companyName,
+  notice,
 }: {
   bgUrl?: string | null;
   companyName?: string | null;
+  /** Failure /auth/callback bounced back with, resolved server-side. */
+  notice?: string | null;
 }) {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [signInError, setError] = useState<string | null>(null);
+  const error = signInError ?? notice ?? null;
 
   const signInWithGoogle = async () => {
     setLoading(true);

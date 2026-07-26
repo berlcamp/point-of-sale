@@ -78,12 +78,21 @@ export async function updateSession(request: NextRequest) {
   // Authenticated: look up profile/role.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, is_active")
+    .select("role, is_active, company_id")
     .eq("id", user.id)
     .maybeSingle();
 
-  // Signed in with Google but never invited / provisioned.
-  if (!profile || !profile.is_active) {
+  // No active company means no store to work in. Revoking a user's LAST
+  // membership leaves profiles.company_id null while is_active stays true and
+  // role keeps its last value, so the is_active check alone does not catch it:
+  // /not-authorized would bounce to homeForRole(role), and that page redirects
+  // straight back here — ERR_TOO_MANY_REDIRECTS, with no way to reach /login
+  // and sign out. The platform super admin legitimately has no company.
+  const hasNoCompany = !profile?.company_id && profile?.role !== "super_admin";
+
+  // Signed in with Google but never invited / provisioned, deactivated
+  // account-wide, or left without any store.
+  if (!profile || !profile.is_active || hasNoCompany) {
     if (pathname === "/not-authorized") return response;
     const url = request.nextUrl.clone();
     url.pathname = "/not-authorized";

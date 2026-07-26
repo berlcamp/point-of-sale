@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SignOutButton } from "@/components/SignOutButton";
 import { CompanySwitcher } from "@/components/CompanySwitcher";
+import { useSwitchGate } from "@/lib/offline/switch-gate";
 import type { Membership, Role } from "@/lib/types";
 import {
   LayoutDashboard,
@@ -42,6 +43,10 @@ export function AdminSidebar({
   memberships: Membership[];
 }) {
   const pathname = usePathname();
+  // The offline/outbox gate is NOT a POS-only concern: the Dexie outbox is
+  // origin-wide, so a sale queued at the POS is still queued here. Switching
+  // from this sidebar would flush it under the new store.
+  const gate = useSwitchGate();
 
   return (
     <aside className="w-56 bg-blue-800 text-white flex flex-col shrink-0">
@@ -52,6 +57,8 @@ export function AdminSidebar({
           activeCompanyId={activeCompanyId}
           memberships={memberships}
           redirectTo="/admin"
+          disabled={gate.disabled}
+          disabledReason={gate.disabledReason}
           className="mt-3"
         />
       </div>

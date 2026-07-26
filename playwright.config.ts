@@ -37,14 +37,20 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"], storageState: "tests/.auth/state.json" },
       dependencies: ["setup"],
-      testIgnore: [/auth\.setup\.ts/, /switcher-solo\.spec\.ts/, /super-admin\.spec\.ts/],
+      testIgnore: [
+        /auth\.setup\.ts/,
+        /switcher-solo\.spec\.ts/,
+        /revoked-access\.spec\.ts/,
+        /super-admin\.spec\.ts/,
+      ],
     },
     {
-      // Single-company account, for proving the switcher stays hidden.
+      // Single-company account: proves the switcher stays hidden, and is the
+      // only fixture whose LAST membership can be revoked.
       name: "chromium-solo",
       use: { ...devices["Desktop Chrome"], storageState: "tests/.auth/solo.json" },
       dependencies: ["setup"],
-      testMatch: /switcher-solo\.spec\.ts/,
+      testMatch: [/switcher-solo\.spec\.ts/, /revoked-access\.spec\.ts/],
     },
     {
       name: "chromium-super",

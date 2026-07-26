@@ -304,3 +304,81 @@ begin
 
   return new;
 end $$;
+
+-- ---------------------------------------------------------------------
+-- An invitation may never carry the platform role. invitations_admin_all's
+-- `with check` does not constrain `role`, and the UI's role picker is not a
+-- trust boundary — a company admin can POST role='super_admin' over REST.
+-- company_members rejects that role, and handle_new_user() is an AFTER INSERT
+-- trigger on auth.users, so the bad membership insert aborts the ENTIRE
+-- account creation: that email could then never sign up at all. For a user
+-- who already exists, claim_invitation() raises instead, taking every other
+-- legitimate pending invitation of theirs down with it.
+-- ---------------------------------------------------------------------
+do $$ begin
+  alter table point_of_sale.invitations
+    add constraint invitations_role_not_super check (role <> 'super_admin');
+exception
+  when duplicate_object then null;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- The platform super admin is never a member of a company.
+--
+-- claim_invitation() and handle_new_user() both return early for the super
+-- admin BEFORE their membership loops, so the invitation path already
+-- enforces this. A direct INSERT into company_members never reaches that
+-- guard, and company_members_admin_all deliberately does not constrain
+-- user_id (an accepted ruling — not revisited here), so a company admin could
+-- attach the super admin to their own company. The sync trigger would then
+-- project it: is_super_admin() flips to false and recovery needs direct DB
+-- access. A check constraint cannot express this — it cannot read profiles.
+-- ---------------------------------------------------------------------
+create or replace function point_of_sale.forbid_super_admin_membership()
+returns trigger language plpgsql security definer set search_path = point_of_sale as $$
+begin
+  if exists (
+    select 1 from point_of_sale.profiles p
+     where p.id = new.user_id and p.role = 'super_admin'
+  ) then
+    raise exception 'The platform super admin cannot be a member of a company';
+  end if;
+  return new;
+end $$;
+
+-- BEFORE, so it rejects the write before sync_active_membership() (AFTER) can
+-- project anything onto the super admin's profile.
+drop trigger if exists trg_company_members_no_super on point_of_sale.company_members;
+create trigger trg_company_members_no_super
+  before insert or update on point_of_sale.company_members
+  for each row execute function point_of_sale.forbid_super_admin_membership();
+
+-- ---------------------------------------------------------------------
+-- Profile reads follow membership, not just the active projection.
+--
+-- profiles_self_read (0002) allows `company_id = current_company_id()`, i.e.
+-- "currently active in my store". Under multi-company that hides a member the
+-- moment they switch to another store of theirs — their own store's admin
+-- could no longer see or manage them on /admin/users. Widen it to everyone
+-- who BELONGS to the caller's active store, matching the scope the super
+-- admin's user count already uses.
+--
+-- SECURITY DEFINER and parameterless: it resolves the company from
+-- current_company_id() rather than an argument, so no caller can probe another
+-- company's roster, and it never triggers RLS evaluation on company_members.
+-- ---------------------------------------------------------------------
+create or replace function point_of_sale.my_company_member_ids()
+returns setof uuid language sql stable security definer set search_path = point_of_sale as $$
+  select user_id from point_of_sale.company_members
+   where company_id = point_of_sale.current_company_id();
+$$;
+
+grant execute on function point_of_sale.my_company_member_ids() to authenticated;
+
+drop policy if exists profiles_self_read on point_of_sale.profiles;
+create policy profiles_self_read on point_of_sale.profiles
+  for select using (
+    id = auth.uid()
+    or company_id = point_of_sale.current_company_id()
+    or id in (select point_of_sale.my_company_member_ids())
+  );

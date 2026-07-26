@@ -14,21 +14,52 @@ const roleBadge: Record<string, string> = {
   cashier: "bg-gray-100 text-gray-600",
 };
 
+// One (user, this store) membership, with the user's profile attached.
+// company_members is the source of truth for both the role and the access
+// flag; profiles.role / profiles.company_id are only a projection of whichever
+// membership the user happens to be active in right now.
+interface StoreMember {
+  id: string;
+  user_id: string;
+  role: Role;
+  is_active: boolean;
+  profile: Profile;
+}
+
 export function UsersManager() {
   const supabase = createClient();
   const { companyId, userId } = useAdmin();
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [members, setMembers] = useState<StoreMember[]>([]);
   const [invites, setInvites] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: p }, { data: inv }] = await Promise.all([
-      supabase.from("profiles").select("*").eq("company_id", companyId).order("created_at"),
+    // Scope by MEMBERSHIP, not by profiles.company_id. The latter is "who is
+    // currently active in this store", so a member who switched to another
+    // store of theirs would vanish from this list and become unmanageable.
+    const [{ data: m }, { data: inv }] = await Promise.all([
+      supabase
+        .from("company_members")
+        .select("id, user_id, role, is_active")
+        .eq("company_id", companyId)
+        .order("created_at"),
       supabase.from("invitations").select("*").eq("company_id", companyId).eq("status", "pending"),
     ]);
-    setProfiles((p as Profile[]) ?? []);
+
+    const rows = (m as Omit<StoreMember, "profile">[]) ?? [];
+    const ids = rows.map((r) => r.user_id);
+    const { data: p } = ids.length
+      ? await supabase.from("profiles").select("*").in("id", ids)
+      : { data: [] as Profile[] };
+    const byId = new Map(((p as Profile[]) ?? []).map((x) => [x.id, x]));
+
+    setMembers(
+      rows
+        .map((r) => ({ ...r, profile: byId.get(r.user_id) }))
+        .filter((r): r is StoreMember => Boolean(r.profile))
+    );
     setInvites((inv as Invitation[]) ?? []);
     setLoading(false);
   }, [supabase, companyId]);
@@ -37,12 +68,18 @@ export function UsersManager() {
     load();
   }, [load]);
 
-  const setRole = async (p: Profile, role: Role) => {
-    await supabase.from("profiles").update({ role }).eq("id", p.id);
+  // Write the membership, never profiles.role — the sync_active_membership()
+  // trigger projects it onto the profile if this is the store they are active
+  // in. Writing the projection directly is silently undone by the next switch.
+  const setRole = async (m: StoreMember, role: Role) => {
+    await supabase.from("company_members").update({ role }).eq("id", m.id);
     load();
   };
-  const toggleActive = async (p: Profile) => {
-    await supabase.from("profiles").update({ is_active: !p.is_active }).eq("id", p.id);
+  // Per-store access only. profiles.is_active is account-wide and blocks
+  // sign-in everywhere; revoking someone here must not lock them out of a
+  // different store they also belong to. That flag stays with the super admin.
+  const toggleActive = async (m: StoreMember) => {
+    await supabase.from("company_members").update({ is_active: !m.is_active }).eq("id", m.id);
     load();
   };
   const revoke = async (i: Invitation) => {
@@ -74,28 +111,28 @@ export function UsersManager() {
               <tr>
                 <th className="text-left px-5 py-3">Name</th>
                 <th className="text-left px-5 py-3">Email</th>
-                <th className="text-left px-5 py-3">Role</th>
-                <th className="text-left px-5 py-3">Status</th>
+                <th className="text-left px-5 py-3">Role in this store</th>
+                <th className="text-left px-5 py-3">Store access</th>
                 <th className="text-right px-5 py-3">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {profiles.map((p) => (
-                <tr key={p.id} className="hover:bg-gray-50">
+              {members.map((m) => (
+                <tr key={m.id} className="hover:bg-gray-50">
                   <td className="px-5 py-3 font-medium text-gray-900">
-                    {p.full_name}
-                    {p.id === userId && (
+                    {m.profile.full_name}
+                    {m.user_id === userId && (
                       <span className="ml-2 text-xs text-blue-500">(you)</span>
                     )}
                   </td>
-                  <td className="px-5 py-3 text-gray-600">{p.email}</td>
+                  <td className="px-5 py-3 text-gray-600">{m.profile.email}</td>
                   <td className="px-5 py-3">
                     <select
-                      value={p.role}
-                      disabled={p.id === userId}
-                      onChange={(e) => setRole(p, e.target.value as Role)}
+                      value={m.role}
+                      disabled={m.user_id === userId}
+                      onChange={(e) => setRole(m, e.target.value as Role)}
                       className={`px-2.5 py-1 rounded-full text-xs font-medium border-0 ${
-                        roleBadge[p.role] ?? "bg-gray-100"
+                        roleBadge[m.role] ?? "bg-gray-100"
                       } disabled:opacity-70`}
                     >
                       <option value="admin">Admin</option>
@@ -106,20 +143,24 @@ export function UsersManager() {
                   <td className="px-5 py-3">
                     <span
                       className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                        p.is_active ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-500"
+                        m.is_active ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-500"
                       }`}
                     >
-                      {p.is_active ? "Active" : "Inactive"}
+                      {m.is_active ? "Active" : "Revoked"}
                     </span>
                   </td>
                   <td className="px-5 py-3 text-right">
                     <button
-                      onClick={() => toggleActive(p)}
-                      disabled={p.id === userId}
+                      onClick={() => toggleActive(m)}
+                      disabled={m.user_id === userId}
                       className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg disabled:opacity-30"
-                      title={p.is_active ? "Deactivate" : "Activate"}
+                      title={
+                        m.is_active
+                          ? "Revoke access to this store"
+                          : "Restore access to this store"
+                      }
                     >
-                      {p.is_active ? <UserX size={16} /> : <UserCheck size={16} />}
+                      {m.is_active ? <UserX size={16} /> : <UserCheck size={16} />}
                     </button>
                   </td>
                 </tr>

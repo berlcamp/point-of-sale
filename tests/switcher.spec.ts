@@ -131,6 +131,48 @@ test("POS switcher cannot switch stores while a sale is queued in the outbox", a
   await expect(page).toHaveURL(/\/$/);
 });
 
+test("admin sidebar switcher is disabled while a sale is queued in the outbox", async ({ page }) => {
+  // The Dexie outbox is ORIGIN-wide, so a sale queued at the POS is still
+  // queued once the same browser lands on /admin. The sidebar switcher has to
+  // honour the same gate the POS one does: create_sale resolves the company
+  // server-side from the profile, so a queued sale that flushes after an
+  // /admin switch books its revenue to the new store while depleting the old
+  // store's stock. This is the test whose absence let that through.
+  await page.goto("/");
+  await expect(page.getByPlaceholder(/Search products/i)).toBeVisible();
+
+  // Fail create_sale so checkout falls back to the outbox, without ever going
+  // offline — switch_company stays genuinely reachable, so a broken gate
+  // produces a real switch rather than a masked network error.
+  await page.route("**/rest/v1/rpc/create_sale", (route) =>
+    route.fulfill({ status: 500, contentType: "application/json", body: "{}" })
+  );
+
+  await page.getByPlaceholder(/Search products/i).fill("LATTE-01");
+  await page.getByRole("button", { name: "Add" }).click();
+  await page.getByRole("button", { name: "Checkout" }).click();
+  await expect(page.getByText("Payment Method")).toBeVisible();
+  await page.getByRole("button", { name: "Cash", exact: true }).click();
+  await page.getByRole("button", { name: "Exact" }).click();
+  await page.getByRole("button", { name: "Complete Sale" }).click();
+  await expect(page.getByRole("button", { name: /New Transaction/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /1 pending/i })).toBeVisible();
+
+  await page.goto("/admin");
+
+  const switcher = page.getByRole("button", { name: /Switch store/i });
+  await expect(switcher).toBeVisible();
+  await expect(switcher).toBeDisabled();
+  // Same wording as the POS, so the two surfaces read identically.
+  await expect(switcher).toHaveAttribute("title", "Sync 1 pending sale first");
+
+  // A disabled <button> doesn't dispatch click handlers even when forced.
+  await switcher.click({ force: true }).catch(() => {});
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(switcher).toContainText("Test Co");
+  await expect(page).toHaveURL(/\/admin$/);
+});
+
 test("POS switcher shows an error when switch_company itself fails, without closing the menu", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByPlaceholder(/Search products/i)).toBeVisible();
