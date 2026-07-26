@@ -20,7 +20,7 @@
 - New SQL goes in **one** migration file: `supabase/migrations/0011_company_memberships.sql`. Tasks 1–4 append to it in order.
 - `role` values are the `point_of_sale.user_role` enum: `super_admin`, `admin`, `manager`, `cashier`. `super_admin` is a platform role and is never a membership.
 - Two distinct `is_active` flags — do not conflate: `profiles.is_active` is account-wide and blocks sign-in; `company_members.is_active` revokes one company only.
-- Local Postgres for verification: `postgresql://postgres:postgres@127.0.0.1:54322/postgres` (requires `supabase start`).
+- Local Postgres for verification: `postgresql://postgres:postgres@127.0.0.1:55522/postgres`. This port is **this machine's** current value — confirm with `npx supabase status` (field `DB_URL`) before running any psql command, and use whatever it reports. Requires `supabase start`.
 - E2E suite is run with `npm run test:e2e`; a schema change requires `npm run db:reset` first.
 
 ---
@@ -84,7 +84,7 @@ on conflict (user_id, company_id) do nothing;
 Run:
 
 ```bash
-psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c \
+psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" -c \
   "select count(*) from point_of_sale.company_members;"
 ```
 
@@ -100,7 +100,7 @@ Expected: completes without error.
 Run:
 
 ```bash
-psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c \
+psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" -c \
   "select user_id, company_id, role, is_active from point_of_sale.company_members;"
 ```
 
@@ -109,7 +109,7 @@ Expected: exactly 1 row — user `00000000-0000-0000-0000-0000000000a1`, company
 Also confirm the enum guard holds:
 
 ```bash
-psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c \
+psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" -c \
   "insert into point_of_sale.company_members (user_id, company_id, role)
    values ('00000000-0000-0000-0000-0000000000a1','00000000-0000-0000-0000-0000000000b1','super_admin');"
 ```
@@ -193,7 +193,7 @@ Run: `npm run db:reset`
 Then run this script, which exercises role-mirroring, adoption, and revocation:
 
 ```bash
-psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" <<'SQL'
+psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" <<'SQL'
 \set a1 '00000000-0000-0000-0000-0000000000a1'
 \set b1 '00000000-0000-0000-0000-0000000000b1'
 
@@ -252,7 +252,7 @@ git commit -m "feat(db): add company_members table with active-membership projec
 The switcher needs to read the *names* of companies the user is not currently active in. Today `companies_member_read` only permits `id = current_company_id()`. Verify the current (restrictive) behaviour, impersonating the seeded admin the way PostgREST does:
 
 ```bash
-psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" <<'SQL'
+psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" <<'SQL'
 -- Give a1 a second company + membership so there is something to not-see.
 insert into point_of_sale.companies (id, name, slug)
   values ('00000000-0000-0000-0000-0000000000b8', 'RLS Probe', 'rls-probe');
@@ -321,7 +321,7 @@ create policy companies_member_read on point_of_sale.companies
 Run: `npm run db:reset`
 
 ```bash
-psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" <<'SQL'
+psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" <<'SQL'
 insert into point_of_sale.companies (id, name, slug)
   values ('00000000-0000-0000-0000-0000000000b8', 'RLS Probe', 'rls-probe');
 insert into point_of_sale.company_members (user_id, company_id, role)
@@ -339,7 +339,7 @@ Expected: both boolean columns print `t`.
 - [ ] **Step 4: Verify data isolation did NOT widen**
 
 ```bash
-psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" <<'SQL'
+psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" <<'SQL'
 insert into point_of_sale.companies (id, name, slug)
   values ('00000000-0000-0000-0000-0000000000b8', 'RLS Probe', 'rls-probe');
 insert into point_of_sale.company_members (user_id, company_id, role)
@@ -380,7 +380,7 @@ git commit -m "feat(db): RLS for company_members, widen company reads to members
 - [ ] **Step 1: Write the failing check**
 
 ```bash
-psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c \
+psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" -c \
   "select point_of_sale.switch_company('00000000-0000-0000-0000-0000000000b1');"
 ```
 
@@ -445,7 +445,7 @@ grant execute on function point_of_sale.switch_company(uuid) to authenticated;
 Run: `npm run db:reset`
 
 ```bash
-psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" <<'SQL'
+psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" <<'SQL'
 insert into point_of_sale.companies (id, name, slug)
   values ('00000000-0000-0000-0000-0000000000b8','Switch Probe','switch-probe'),
          ('00000000-0000-0000-0000-0000000000b7','Dead Probe','dead-probe');
@@ -472,7 +472,7 @@ Expected: `active_moved = t`, `role_moved = t`.
 Now the three refusals — run each separately and confirm each raises:
 
 ```bash
-DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+DB="postgresql://postgres:postgres@127.0.0.1:55522/postgres"
 CLAIMS="set local role authenticated; set local request.jwt.claims = '{\"sub\":\"00000000-0000-0000-0000-0000000000a1\",\"role\":\"authenticated\"}';"
 
 # Not a member (a company that exists but has no membership row)
@@ -522,7 +522,7 @@ Two existing behaviours are outright bugs under multi-company:
 - [ ] **Step 1: Write the failing checks**
 
 ```bash
-psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" <<'SQL'
+psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" <<'SQL'
 insert into point_of_sale.companies (id, name, slug)
   values ('00000000-0000-0000-0000-0000000000b8','Invite Probe','invite-probe');
 -- Bug 1: a second pending invitation for the same email, different company.
@@ -647,7 +647,7 @@ end $$;
 Run: `npm run db:reset`
 
 ```bash
-psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" <<'SQL'
+psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" <<'SQL'
 insert into point_of_sale.companies (id, name, slug)
   values ('00000000-0000-0000-0000-0000000000b8','Invite Probe','invite-probe');
 
@@ -790,7 +790,7 @@ values ('00000000-0000-0000-0000-0000000000c2',
 Run: `npm run db:reset`
 
 ```bash
-psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" <<'SQL'
+psql "postgresql://postgres:postgres@127.0.0.1:55522/postgres" <<'SQL'
 select 'a1', count(*) = 2 as two_memberships from point_of_sale.company_members
   where user_id = '00000000-0000-0000-0000-0000000000a1';
 select 'a1-active', company_id = '00000000-0000-0000-0000-0000000000b1' as in_test_co,
