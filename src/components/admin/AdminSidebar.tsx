@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SignOutButton } from "@/components/SignOutButton";
-import type { Role } from "@/lib/types";
+import { CompanySwitcher } from "@/components/CompanySwitcher";
+import type { Membership, Role } from "@/lib/types";
 import {
   LayoutDashboard,
   Package,
@@ -31,10 +32,14 @@ export function AdminSidebar({
   role,
   name,
   companyName,
+  activeCompanyId,
+  memberships,
 }: {
   role: Role;
   name: string;
   companyName: string;
+  activeCompanyId: string;
+  memberships: Membership[];
 }) {
   const pathname = usePathname();
 
@@ -43,6 +48,12 @@ export function AdminSidebar({
       <div className="px-4 py-5 border-b border-blue-700">
         <h1 className="font-bold text-sm leading-tight">{companyName}</h1>
         <p className="text-blue-300 text-xs mt-1">Admin Panel</p>
+        <CompanySwitcher
+          activeCompanyId={activeCompanyId}
+          memberships={memberships}
+          redirectTo="/admin"
+          className="mt-3"
+        />
       </div>
 
       <nav className="flex-1 py-4 space-y-1 px-2">

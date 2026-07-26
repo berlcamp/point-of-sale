@@ -30,6 +30,8 @@ export default async function AdminLayout({
           role={profile.role}
           name={profile.full_name ?? profile.email}
           companyName={profile.company?.name ?? "Company"}
+          activeCompanyId={profile.company_id}
+          memberships={profile.memberships ?? []}
         />
         <main className="flex-1 overflow-auto">{children}</main>
       </div>
