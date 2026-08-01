@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "db:reset": "supabase db reset",
+    "migrate:mjb": "node scripts/migrate-from-mjb-pos.mjs",
     "pretest:e2e": "node scripts/gen-test-env.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "node scripts/gen-test-env.mjs && playwright test --ui"
