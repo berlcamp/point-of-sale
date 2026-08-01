@@ -154,7 +154,11 @@ export function encodeSalesReceipt(
     );
   } else {
     e.line(
-      lr(`Paid (${receipt.payment_method})`, formatMoney(receipt.amount_paid, currency), cols)
+      lr(
+        `Paid (${receipt.payment_method ?? "unpaid"})`,
+        formatMoney(receipt.amount_paid, currency),
+        cols
+      )
     );
     if (receipt.payment_method === "cheque" && receipt.cheque_date) {
       e.line(lr("Cheque date", receipt.cheque_date, cols));
@@ -200,7 +204,9 @@ export function encodeDeliveryReceipt(
   items(e, receipt, currency, cols);
   divider(e, cols);
   totals(e, receipt, currency, cols);
-  if (receipt.payment_method === "terms") {
+  if (receipt.payment_method === null) {
+    e.line(lr("UNPAID", "pay at cashier", cols));
+  } else if (receipt.payment_method === "terms") {
     e.line(lr("ON TERMS", receipt.payment_terms ?? "terms", cols));
   } else if (receipt.payment_method === "cheque" && receipt.cheque_date) {
     e.line(lr("PAID", `cheque ${receipt.cheque_date}`, cols));

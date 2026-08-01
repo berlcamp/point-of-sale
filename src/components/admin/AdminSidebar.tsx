@@ -16,10 +16,17 @@ import {
   Users,
   Settings,
   Store,
+  Banknote,
 } from "lucide-react";
 
+// The booth sits in the main nav for everyone who is allowed to work it,
+// whatever flow the store is on. Hiding it behind the setting made it
+// undiscoverable — an admin who has not switched their store over yet has no
+// way to find the station they are being told about. The page itself explains
+// when the store isn't using it.
 const navItems = [
   { href: "/admin", label: "Dashboard", Icon: LayoutDashboard, roles: ["admin", "manager"] },
+  { href: "/cashier", label: "Cashier Booth", Icon: Banknote, roles: ["admin", "manager"] },
   { href: "/admin/products", label: "Products", Icon: Package, roles: ["admin", "manager"] },
   { href: "/admin/inventory", label: "Inventory", Icon: Warehouse, roles: ["admin", "manager"] },
   { href: "/admin/reports", label: "Reports", Icon: TrendingUp, roles: ["admin", "manager"] },

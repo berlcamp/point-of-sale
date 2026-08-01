@@ -1,7 +1,13 @@
 // Domain types — snake_case to match the `point_of_sale` Postgres schema directly.
 
-export type Role = "super_admin" | "admin" | "manager" | "cashier";
+export type Role = "super_admin" | "admin" | "manager" | "cashier" | "booth_cashier";
 export type PaymentMethod = "cash" | "cheque" | "terms";
+// How a store hands over goods and money:
+//   direct        — the sales person takes payment at the POS.
+//   cashier_booth — the POS leaves the sale pending with a ticket number and
+//                   a separate cashier station takes payment.
+export type TransactionFlow = "direct" | "cashier_booth";
+export type SaleStatus = "pending" | "completed";
 export type MovementType = "SALE" | "RESTOCK" | "ADJUSTMENT" | "RETURN";
 export type ReturnType = "VOID" | "RETURN";
 export type InvitationStatus = "pending" | "accepted";
@@ -15,6 +21,7 @@ export interface Company {
   logo_url: string | null;
   login_bg_url: string | null;
   currency: string;
+  transaction_flow: TransactionFlow;
   is_active: boolean;
   created_at: string;
 }
@@ -114,7 +121,8 @@ export interface Sale {
   subtotal: number;
   discount: number;
   total: number;
-  payment_method: PaymentMethod;
+  // A pending sale has no payment method yet — the booth records it on completion.
+  payment_method: PaymentMethod | null;
   cheque_date: string | null; // set when payment_method = 'cheque'
   payment_terms: string | null; // set when payment_method = 'terms'
   settled_at: string | null; // cheque/terms only: when the payment was collected
@@ -126,6 +134,12 @@ export interface Sale {
   terminal_id: string | null;
   is_voided: boolean;
   created_at: string;
+  status: SaleStatus;
+  // Short number (1–999) the customer carries to the cashier booth. Only
+  // assigned to sales opened as pending; null on direct-flow sales.
+  ticket_number: number | null;
+  completed_at: string | null;
+  completed_by_name: string | null;
   items?: SaleItem[];
 }
 
@@ -185,7 +199,11 @@ export interface CreateSalePayload {
   customer_name?: string;
   discount: number;
   amount_paid: number;
-  payment_method: PaymentMethod;
+  // Omitted (with status 'pending') when the cashier booth will record it.
+  payment_method?: PaymentMethod;
+  // Defaults to 'completed'. 'pending' is only accepted from a store whose
+  // transaction_flow is 'cashier_booth'.
+  status?: SaleStatus;
   cheque_date?: string; // required when payment_method = 'cheque'
   payment_terms?: string; // required when payment_method = 'terms'
   terminal_id: string;

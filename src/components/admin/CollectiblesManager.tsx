@@ -135,7 +135,7 @@ export function CollectiblesManager() {
                     <td className="px-5 py-3 text-gray-700">{s.customer_name || <span className="text-gray-300">—</span>}</td>
                     <td className="px-5 py-3 text-gray-500">{new Date(s.created_at).toLocaleDateString()}</td>
                     <td className="px-5 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs capitalize ${methodPill[s.payment_method] ?? "bg-gray-100"}`}>
+                      <span className={`px-2 py-0.5 rounded-full text-xs capitalize ${methodPill[s.payment_method ?? ""] ?? "bg-gray-100"}`}>
                         {s.payment_method}
                       </span>
                       {paymentDetail(s) && <div className="text-xs text-gray-400 mt-0.5">{paymentDetail(s)}</div>}

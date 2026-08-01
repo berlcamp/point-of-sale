@@ -84,7 +84,11 @@ export function DeliveryReceipt({
           <span className="font-amount">{formatMoney(receipt.total, currency)}</span>
         </div>
         <div className="flex items-center justify-between pt-1">
-          {receipt.payment_method === "terms" ? (
+          {receipt.payment_method === null ? (
+            <span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
+              PAY AT CASHIER
+            </span>
+          ) : receipt.payment_method === "terms" ? (
             <span className="inline-flex items-center rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
               ON TERMS
             </span>

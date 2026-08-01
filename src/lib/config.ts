@@ -15,6 +15,22 @@ export const PAYMENT_METHODS = [
   { value: "terms", label: "Terms", color: "amber" },
 ] as const;
 
+// How the store hands over goods and money. Set per store on Admin → Settings.
+export const TRANSACTION_FLOWS = [
+  {
+    value: "direct",
+    label: "Pay at the counter",
+    description:
+      "The sales person takes the payment, gives the change and prints the receipt. The sale is completed as soon as it is rung up.",
+  },
+  {
+    value: "cashier_booth",
+    label: "Pay at the cashier booth",
+    description:
+      "The sales person rings up the cart and hands the customer a transaction number. The cashier at the booth takes the payment, completes the sale, prints the receipt and gives the change.",
+  },
+] as const;
+
 export const PAYMENT_TERMS_OPTIONS = [
   "7 days",
   "15 days",
@@ -32,7 +48,7 @@ export function formatDateOnly(d: string): string {
 // A cheque/terms sale is a collectible until an admin or manager marks it
 // paid (sales.settled_at). Cash sales are paid at the register.
 export function isUnsettledCollectible(sale: {
-  payment_method: string;
+  payment_method: string | null;
   settled_at?: string | null;
   is_voided?: boolean;
 }): boolean {
@@ -46,7 +62,7 @@ export function isUnsettledCollectible(sale: {
 // When payment is expected: the date on the cheque, or the sale date plus the
 // agreed terms ("30 days"). Null when there isn't enough info to tell.
 export function collectibleDueDate(sale: {
-  payment_method: string;
+  payment_method: string | null;
   cheque_date?: string | null;
   payment_terms?: string | null;
   created_at: string;
@@ -67,7 +83,7 @@ export function collectibleDueDate(sale: {
 // Secondary payment info shown next to the method: the cheque's date or the
 // agreed terms. Null for plain methods (cash, legacy gcash/card rows).
 export function paymentDetail(sale: {
-  payment_method: string;
+  payment_method: string | null;
   cheque_date?: string | null;
   payment_terms?: string | null;
 }): string | null {
@@ -83,6 +99,7 @@ export const ROLE_LABELS: Record<string, string> = {
   admin: "Admin",
   manager: "Manager",
   cashier: "Cashier",
+  booth_cashier: "Booth Cashier",
 };
 
 export const QUICK_AMOUNTS = [100, 200, 500, 1000, 2000, 5000];

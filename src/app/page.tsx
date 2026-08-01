@@ -6,6 +6,7 @@ export default async function POSPage() {
   const profile = await getProfile();
   if (!profile) redirect("/login");
   if (profile.role === "super_admin") redirect("/super-admin");
+  if (profile.role === "booth_cashier") redirect("/cashier");
   if (!profile.company_id) redirect("/not-authorized");
 
   // POSBoot mirrors this profile locally and handles offline restore + PIN.

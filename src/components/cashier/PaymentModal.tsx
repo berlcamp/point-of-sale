@@ -1,91 +1,80 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { Modal } from "@/components/Modal";
 import { formatMoney, PAYMENT_METHODS, PAYMENT_TERMS_OPTIONS, QUICK_AMOUNTS } from "@/lib/config";
-import type { PaymentMethod, TransactionFlow } from "@/lib/types";
-import { WifiOff } from "lucide-react";
+import type { ReceiptData } from "@/components/pos/ReceiptModal";
+import type { PaymentMethod, Sale, SaleItem } from "@/lib/types";
 
-export interface CheckoutDetails {
-  amountPaid: number;
-  discount: number;
-  // Omitted in the cashier-booth flow — the booth records how the customer paid.
-  method?: PaymentMethod;
-  customerName: string;
-  chequeDate?: string; // YYYY-MM-DD, when method = 'cheque'
-  paymentTerms?: string; // when method = 'terms'
-}
+type SaleWithItems = Sale & { sale_items: SaleItem[] };
 
-interface Props {
-  subtotal: number;
-  itemCount: number;
-  currency: string;
-  flow: TransactionFlow;
-  // A pending ticket only reaches the booth over the network, so the booth
-  // flow cannot fall back to the offline outbox the way a direct sale does.
-  offline?: boolean;
-  error?: string | null;
-  // Awaited, so the button stays busy for exactly as long as the sale is in
-  // flight and frees itself again when a send is rejected.
-  onConfirm: (details: CheckoutDetails) => void | Promise<void>;
-  onClose: () => void;
-}
-
-export function CheckoutModal({
-  subtotal,
-  itemCount,
+// Where the money is actually recorded: the sales person built this cart, the
+// customer carried its number over, and everything about how they are paying
+// is decided here.
+export function PaymentModal({
+  sale,
   currency,
-  flow,
-  offline = false,
-  error = null,
-  onConfirm,
   onClose,
-}: Props) {
-  const [discount, setDiscount] = useState(0);
+  onCompleted,
+}: {
+  sale: SaleWithItems;
+  currency: string;
+  onClose: () => void;
+  onCompleted: (receipt: ReceiptData) => void;
+}) {
+  const supabase = createClient();
   const [method, setMethod] = useState<PaymentMethod>("cash");
-  const [amountPaid, setAmountPaid] = useState<number>(0);
-  const [customerName, setCustomerName] = useState("");
+  const [amountPaid, setAmountPaid] = useState(0);
   const [chequeDate, setChequeDate] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const total = Math.max(0, subtotal - discount);
-  // Terms sales are charged, not paid at the register — nothing is tendered.
+  const total = Number(sale.total);
   const isTerms = method === "terms";
   const change = isTerms ? 0 : amountPaid - total;
-  // In the booth flow the terminal never touches money: it only sends the
-  // cart over and hands the customer a ticket number.
-  const isBooth = flow === "cashier_booth";
 
   const canConfirm =
     !submitting &&
-    !(isBooth && offline) &&
-    (isBooth
-      ? true
-      : isTerms
-        ? paymentTerms !== ""
-        : amountPaid > 0 && change >= 0 && (method !== "cheque" || chequeDate !== ""));
+    (isTerms
+      ? paymentTerms !== ""
+      : amountPaid > 0 && change >= 0 && (method !== "cheque" || chequeDate !== ""));
 
   const confirm = async () => {
     if (!canConfirm) return;
     setSubmitting(true);
-    try {
-      // A rejected send leaves the cart intact so the cashier can retry.
-      await onConfirm(
-        isBooth
-          ? { amountPaid: 0, discount, customerName: customerName.trim() }
-          : {
-              amountPaid: isTerms ? 0 : amountPaid,
-              discount,
-              method,
-              customerName: customerName.trim(),
-              chequeDate: method === "cheque" ? chequeDate : undefined,
-              paymentTerms: isTerms ? paymentTerms : undefined,
-            }
-      );
-    } finally {
+    setError(null);
+
+    const { data, error } = await supabase.rpc("complete_sale", {
+      p_sale: sale.id,
+      p_method: method,
+      p_amount_paid: isTerms ? 0 : amountPaid,
+      p_cheque_date: method === "cheque" ? chequeDate : null,
+      p_terms: isTerms ? paymentTerms : null,
+    });
+
+    if (error) {
+      setError(error.message);
       setSubmitting(false);
+      return;
     }
+
+    const done = data as ReceiptData;
+    onCompleted({
+      ...done,
+      subtotal: Number(done.subtotal),
+      discount: Number(done.discount),
+      total: Number(done.total),
+      amount_paid: Number(done.amount_paid),
+      change: Number(done.change),
+      items: (done.items ?? []).map((i) => ({
+        ...i,
+        quantity: Number(i.quantity),
+        price: Number(i.price),
+        total: Number(i.total),
+      })),
+    });
   };
 
   useEffect(() => {
@@ -97,10 +86,13 @@ export function CheckoutModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canConfirm]);
 
+  const ticket =
+    sale.ticket_number === null ? "—" : String(sale.ticket_number).padStart(3, "0");
+
   return (
     <Modal
-      title={isBooth ? "Send to Cashier" : "Checkout"}
-      subtitle={`${itemCount} item${itemCount === 1 ? "" : "s"}`}
+      title={`Transaction ${ticket}`}
+      subtitle={sale.customer_name || "Walk-in customer"}
       onClose={onClose}
       footer={
         <div className="flex justify-end gap-2">
@@ -112,76 +104,41 @@ export function CheckoutModal({
             disabled={!canConfirm}
             className="px-5 py-2 rounded-lg bg-green-600 hover:bg-green-500 text-white font-semibold disabled:opacity-40"
           >
-            {submitting
-              ? isBooth
-                ? "Sending…"
-                : "Processing…"
-              : isBooth
-                ? "Send to Cashier"
-                : "Complete Sale"}
+            {submitting ? "Completing…" : "Complete & Print"}
           </button>
         </div>
       }
     >
       <div className="space-y-5">
-        <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-          <Row label="Subtotal" value={formatMoney(subtotal, currency)} />
-          <div className="flex items-center justify-between">
-            <span className="text-gray-600">Discount</span>
-            <input
-              type="number"
-              min={0}
-              value={discount || ""}
-              onChange={(e) => setDiscount(Math.max(0, Number(e.target.value) || 0))}
-              placeholder="0.00"
-              className="w-28 border border-gray-300 rounded-lg px-2 py-1 text-right text-sm"
-            />
-          </div>
+        <div className="rounded-xl border border-gray-100 divide-y divide-gray-100 text-sm">
+          {(sale.sale_items ?? []).map((it) => (
+            <div key={it.id} className="flex items-start justify-between gap-3 px-3 py-2">
+              <span className="min-w-0">
+                <span className="block truncate text-gray-800">{it.product_name}</span>
+                <span className="text-xs text-gray-400 font-code">
+                  ×{Number(it.quantity)} {it.unit_name} @ {formatMoney(it.price, currency)}
+                </span>
+              </span>
+              <span className="font-amount whitespace-nowrap">
+                {formatMoney(it.total, currency)}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+          <Row label="Subtotal" value={formatMoney(sale.subtotal, currency)} />
+          {Number(sale.discount) > 0 && (
+            <Row label="Discount" value={`- ${formatMoney(sale.discount, currency)}`} />
+          )}
           <div className="flex items-center justify-between pt-2 border-t border-gray-200">
             <span className="font-semibold text-gray-800">Total Due</span>
-            <span className="text-xl font-bold text-blue-700 font-amount">{formatMoney(total, currency)}</span>
-          </div>
-        </div>
-
-        <div>
-          <span className="block text-xs font-medium text-gray-500 mb-2">
-            Customer Name <span className="text-gray-400 font-normal">(optional)</span>
-          </span>
-          <input
-            type="text"
-            value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
-            placeholder="Walk-in customer"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          />
-        </div>
-
-        {isBooth && (
-          <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 text-sm text-blue-800">
-            The customer pays at the cashier booth. Send this cart over and give
-            them the transaction number that appears next — the cashier records
-            the payment, prints the receipt and hands back the change.
-          </div>
-        )}
-
-        {isBooth && offline && (
-          <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 flex items-start gap-2 text-sm text-amber-800">
-            <WifiOff size={16} className="mt-0.5 shrink-0" />
-            <span>
-              This terminal is offline, so the cashier booth can&apos;t see the
-              transaction. Reconnect before sending, or take the payment here.
+            <span className="text-xl font-bold text-blue-700 font-amount">
+              {formatMoney(total, currency)}
             </span>
           </div>
-        )}
+        </div>
 
-        {error && (
-          <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
-        {!isBooth && (
-          <>
         <div>
           <span className="block text-xs font-medium text-gray-500 mb-2">Payment Method</span>
           <div className="grid grid-cols-3 gap-2">
@@ -236,6 +193,7 @@ export function CheckoutModal({
             <span className="block text-xs font-medium text-gray-500 mb-2">Amount Tendered</span>
             <input
               type="number"
+              autoFocus
               value={amountPaid || ""}
               onChange={(e) => setAmountPaid(Number(e.target.value) || 0)}
               placeholder="0.00"
@@ -261,6 +219,12 @@ export function CheckoutModal({
           </div>
         )}
 
+        {error && (
+          <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
         {isTerms ? (
           <div className="rounded-xl p-4 flex items-center justify-between bg-amber-50">
             <span className="text-amber-700">
@@ -277,7 +241,7 @@ export function CheckoutModal({
             }`}
           >
             <span className={change >= 0 ? "text-emerald-700" : "text-red-700"}>
-              {change >= 0 ? "Change" : "Insufficient"}
+              {change >= 0 ? "Change to give" : "Insufficient"}
             </span>
             <span
               className={`text-xl font-bold font-amount ${
@@ -287,8 +251,6 @@ export function CheckoutModal({
               {formatMoney(Math.abs(change), currency)}
             </span>
           </div>
-        )}
-          </>
         )}
       </div>
     </Modal>

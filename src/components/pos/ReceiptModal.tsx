@@ -15,7 +15,9 @@ export interface ReceiptData {
   total: number;
   amount_paid: number;
   change: number;
-  payment_method: string;
+  // Null while a booth transaction is still waiting to be paid — a delivery
+  // receipt can be printed for it before the cashier records the payment.
+  payment_method: string | null;
   cheque_date?: string | null;
   payment_terms?: string | null;
   cashier_name: string;
@@ -117,7 +119,7 @@ export function ReceiptModal({
             ) : (
               <>
                 <Line
-                  label={`Paid (${receipt.payment_method})`}
+                  label={`Paid (${receipt.payment_method ?? "unpaid"})`}
                   value={formatMoney(receipt.amount_paid, currency)}
                 />
                 {receipt.payment_method === "cheque" && receipt.cheque_date && (

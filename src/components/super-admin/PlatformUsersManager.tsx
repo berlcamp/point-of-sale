@@ -22,6 +22,7 @@ const roleBadge: Record<string, string> = {
   admin: "bg-violet-100 text-violet-700",
   manager: "bg-blue-100 text-blue-700",
   cashier: "bg-gray-100 text-gray-600",
+  booth_cashier: "bg-teal-100 text-teal-700",
 };
 
 const inputCls =
@@ -366,6 +367,7 @@ function MembershipsModal({
                 <option value="admin">Admin</option>
                 <option value="manager">Manager</option>
                 <option value="cashier">Cashier</option>
+                <option value="booth_cashier">Booth Cashier</option>
               </select>
               <button
                 onClick={() => remove(m)}
@@ -411,6 +413,7 @@ function MembershipsModal({
                 onChange={(e) => setAddRole(e.target.value as Role)}
               >
                 <option value="cashier">Cashier</option>
+                <option value="booth_cashier">Booth Cashier</option>
                 <option value="manager">Manager</option>
                 <option value="admin">Admin</option>
               </select>
@@ -523,6 +526,7 @@ function InviteModal({
             onChange={(e) => setRole(e.target.value as Role)}
           >
             <option value="cashier">Cashier</option>
+            <option value="booth_cashier">Booth Cashier</option>
             <option value="manager">Manager</option>
             <option value="admin">Admin</option>
           </select>

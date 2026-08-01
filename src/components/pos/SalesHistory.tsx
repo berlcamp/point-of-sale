@@ -140,9 +140,22 @@ export function SalesHistory({
                     <td className="py-2 text-right">{s.itemCount}</td>
                     <td className="py-2 text-right font-amount">{formatMoney(s.total, currency)}</td>
                     <td className="py-2 pl-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs capitalize ${paymentPill[s.payment_method] ?? "bg-gray-100"}`}>
-                        {s.payment_method}
-                      </span>
+                      {s.status === "pending" ? (
+                        <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">
+                          at cashier
+                          {s.ticket_number !== null
+                            ? ` · #${String(s.ticket_number).padStart(3, "0")}`
+                            : ""}
+                        </span>
+                      ) : (
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-xs capitalize ${
+                            paymentPill[s.payment_method ?? ""] ?? "bg-gray-100"
+                          }`}
+                        >
+                          {s.payment_method}
+                        </span>
+                      )}
                       {isUnsettledCollectible(s) && (
                         <span className="ml-1 px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">unpaid</span>
                       )}

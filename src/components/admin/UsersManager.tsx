@@ -12,6 +12,7 @@ const roleBadge: Record<string, string> = {
   admin: "bg-violet-100 text-violet-700",
   manager: "bg-blue-100 text-blue-700",
   cashier: "bg-gray-100 text-gray-600",
+  booth_cashier: "bg-teal-100 text-teal-700",
 };
 
 // One (user, this store) membership, with the user's profile attached.
@@ -138,6 +139,7 @@ export function UsersManager() {
                       <option value="admin">Admin</option>
                       <option value="manager">Manager</option>
                       <option value="cashier">Cashier</option>
+                      <option value="booth_cashier">Booth Cashier</option>
                     </select>
                   </td>
                   <td className="px-5 py-3">
@@ -285,6 +287,7 @@ function InviteForm({
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
           >
             <option value="cashier">Cashier</option>
+            <option value="booth_cashier">Booth Cashier</option>
             <option value="manager">Manager</option>
             <option value="admin">Admin</option>
           </select>

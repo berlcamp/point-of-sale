@@ -71,6 +71,9 @@ export function POSBoot({ profile }: { profile: Profile }) {
       companyId={effective.company_id}
       companyName={companyName}
       currency={effective.company?.currency ?? "PHP"}
+      // Mirrored with the profile, so an offline boot keeps the store on the
+      // flow it was last provisioned with.
+      transactionFlow={effective.company?.transaction_flow ?? "direct"}
       userId={effective.id}
       userName={effective.full_name ?? effective.email}
       role={effective.role}

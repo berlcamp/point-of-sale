@@ -70,6 +70,12 @@ begin
   get diagnostics v_deleted = row_count;
   raise notice 'sales:             % rows', v_deleted;
 
+  -- Cashier-booth ticket numbers restart from 1 with the sales they belong to.
+  delete from point_of_sale.ticket_counters
+   where v_company is null or company_id = v_company;
+  get diagnostics v_deleted = row_count;
+  raise notice 'ticket_counters:   % rows', v_deleted;
+
   -- -------------------------------------------------------------------
   -- Inventory side
   -- -------------------------------------------------------------------

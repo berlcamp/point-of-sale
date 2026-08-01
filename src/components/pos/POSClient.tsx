@@ -8,6 +8,7 @@ import { ProductSearch } from "@/components/pos/ProductSearch";
 import { Cart } from "@/components/pos/Cart";
 import { CheckoutModal, type CheckoutDetails } from "@/components/pos/CheckoutModal";
 import { ReceiptModal, type ReceiptData } from "@/components/pos/ReceiptModal";
+import { TicketModal, type TicketData } from "@/components/pos/TicketModal";
 import { SalesHistory } from "@/components/pos/SalesHistory";
 import {
   cacheProducts,
@@ -26,14 +27,32 @@ import { reconnectThermalPrinter } from "@/lib/printer/thermal";
 import { hasPin } from "@/lib/auth/local";
 import { DEFAULT_TERMINAL_ID, formatMoney } from "@/lib/config";
 import { roundQty } from "@/lib/quantity";
-import type { CartItem, Product, CreateSalePayload, Membership, Role } from "@/lib/types";
+import type {
+  CartItem,
+  Product,
+  CreateSalePayload,
+  Membership,
+  Role,
+  TransactionFlow,
+} from "@/lib/types";
 import { CompanySwitcher } from "@/components/CompanySwitcher";
-import { Wifi, WifiOff, RefreshCw, Lock, KeyRound, Keyboard, Printer, X } from "lucide-react";
+import {
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  Lock,
+  KeyRound,
+  Keyboard,
+  Printer,
+  Banknote,
+  X,
+} from "lucide-react";
 
 interface Props {
   companyId: string;
   companyName: string;
   currency: string;
+  transactionFlow: TransactionFlow;
   userId: string;
   userName: string;
   role: Role;
@@ -54,12 +73,27 @@ function makeReceiptNumber() {
   return `${DEFAULT_TERMINAL_ID}-${stamp}-${rand}`;
 }
 
-export function POSClient({ companyId, companyName, currency, userId, userName, role, memberships, onLock }: Props) {
+export function POSClient({
+  companyId,
+  companyName,
+  currency,
+  transactionFlow,
+  userId,
+  userName,
+  role,
+  memberships,
+  onLock,
+}: Props) {
   const supabase = createClient();
+  // In the booth flow this terminal never takes money: checkout opens a
+  // pending ticket and the cashier station closes it.
+  const isBooth = transactionFlow === "cashier_booth";
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showCheckout, setShowCheckout] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
+  const [ticket, setTicket] = useState<TicketData | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
@@ -222,14 +256,90 @@ export function POSClient({ companyId, companyName, currency, userId, userName, 
 
   const subtotal = cart.reduce((s, i) => s + i.total, 0);
 
-  const handleCheckout = async ({
-    amountPaid,
-    discount,
-    method,
-    customerName,
-    chequeDate,
-    paymentTerms,
-  }: CheckoutDetails) => {
+  // Stock left the shelf the moment the cart was rung up — in the booth flow
+  // that is true of a pending ticket too, so both paths adjust the local
+  // catalog the same way.
+  const decrementLocalStock = (lines: CartItem[]) =>
+    setProducts((prev) =>
+      prev.map((p) => {
+        const line = lines.find((c) => c.product_id === p.id);
+        if (!line || !p.inventory) return p;
+        return {
+          ...p,
+          inventory: {
+            ...p.inventory,
+            quantity: Number(p.inventory.quantity) - line.quantity * line.conversion_factor,
+          },
+        };
+      })
+    );
+
+  // Booth flow: open a PENDING sale and hand the customer its ticket number.
+  // Deliberately no offline fallback — a ticket sitting in this terminal's
+  // outbox is invisible at the booth, so the cart stays put until it can
+  // actually be sent.
+  const sendToCashier = async ({ discount, customerName }: CheckoutDetails) => {
+    setCheckoutError(null);
+    if (!isOnline()) {
+      setCheckoutError(
+        "This terminal is offline, so the cashier booth can't see the transaction. Reconnect and send it again."
+      );
+      return;
+    }
+
+    const receiptNumber = makeReceiptNumber();
+    const customer = customerName.trim() || undefined;
+    const payload: CreateSalePayload = {
+      id: crypto.randomUUID(),
+      receipt_number: receiptNumber,
+      customer_name: customer,
+      discount,
+      amount_paid: 0,
+      status: "pending",
+      terminal_id: DEFAULT_TERMINAL_ID,
+      created_at: new Date().toISOString(),
+      items: cart.map((i) => ({
+        product_id: i.product_id,
+        product_name: i.product_name,
+        unit_name: i.unit_name,
+        quantity: i.quantity,
+        price: i.price,
+        discount: i.discount,
+      })),
+    };
+
+    const { data, error } = await supabase.rpc("create_sale", { payload });
+    if (error) {
+      setCheckoutError(error.message);
+      return;
+    }
+
+    const created = data as { ticket_number?: number | null } | null;
+    setTicket({
+      ticket_number: created?.ticket_number ?? null,
+      receipt_number: receiptNumber,
+      customer_name: customer,
+      total: Math.max(0, subtotal - discount),
+      item_count: cart.length,
+    });
+
+    decrementLocalStock(cart);
+    setCart([]);
+    setShowCheckout(false);
+    setCheckoutError(null);
+    searchRef.current?.focus();
+  };
+
+  const handleCheckout = async (details: CheckoutDetails) => {
+    if (isBooth) return sendToCashier(details);
+    const {
+      amountPaid,
+      discount,
+      method = "cash",
+      customerName,
+      chequeDate,
+      paymentTerms,
+    } = details;
     const id = crypto.randomUUID();
     const receiptNumber = makeReceiptNumber();
     const createdAt = new Date().toISOString();
@@ -318,19 +428,7 @@ export function POSClient({ companyId, companyName, currency, userId, userName, 
     }
 
     // Optimistically decrement local stock.
-    setProducts((prev) =>
-      prev.map((p) => {
-        const line = cart.find((c) => c.product_id === p.id);
-        if (!line || !p.inventory) return p;
-        return {
-          ...p,
-          inventory: {
-            ...p.inventory,
-            quantity: Number(p.inventory.quantity) - line.quantity * line.conversion_factor,
-          },
-        };
-      })
-    );
+    decrementLocalStock(cart);
 
     setReceipt(receiptData);
     setCart([]);
@@ -355,6 +453,11 @@ export function POSClient({ companyId, companyName, currency, userId, userName, 
             {...switchGate(online, pending)}
           />
           <span className="text-blue-200 text-sm">POS Terminal</span>
+          {isBooth && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-600 text-blue-100">
+              Customer pays at the cashier
+            </span>
+          )}
           <span
             className={`ml-2 inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
               online ? "bg-blue-600 text-blue-100" : "bg-amber-500 text-white"
@@ -386,6 +489,16 @@ export function POSClient({ companyId, companyName, currency, userId, userName, 
           >
             Sales
           </button>
+          {/* Shown whatever flow the store is on, so the station is reachable
+              from the terminal without hunting for it. */}
+          {(role === "admin" || role === "manager") && (
+            <Link
+              href="/cashier"
+              className="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm"
+            >
+              <Banknote size={15} /> Cashier
+            </Link>
+          )}
           {(role === "admin" || role === "manager") && (
             <Link href="/admin" className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm">
               Admin
@@ -477,8 +590,25 @@ export function POSClient({ companyId, companyName, currency, userId, userName, 
           subtotal={subtotal}
           itemCount={cart.length}
           currency={currency}
+          flow={transactionFlow}
+          offline={!online}
+          error={checkoutError}
           onConfirm={handleCheckout}
-          onClose={() => setShowCheckout(false)}
+          onClose={() => {
+            setShowCheckout(false);
+            setCheckoutError(null);
+          }}
+        />
+      )}
+
+      {ticket && (
+        <TicketModal
+          ticket={ticket}
+          currency={currency}
+          onNewTransaction={() => {
+            setTicket(null);
+            searchRef.current?.focus();
+          }}
         />
       )}
 

@@ -203,6 +203,8 @@ function TransactionsTab({
                   <td className="px-5 py-3">
                     {s.is_voided ? (
                       <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">VOIDED</span>
+                    ) : s.status === "pending" ? (
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">AT CASHIER</span>
                     ) : isUnsettledCollectible(s) ? (
                       <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">UNPAID</span>
                     ) : (
@@ -214,7 +216,9 @@ function TransactionsTab({
                       <button onClick={() => setPrintSale(s)} className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm">
                         <Truck size={14} /> Delivery Receipt
                       </button>
-                      {!s.is_voided && (
+                      {/* Nothing to refund until the cashier has taken the
+                          money — an unpaid ticket is cancelled at the booth. */}
+                      {!s.is_voided && s.status === "completed" && (
                         <button onClick={() => setReturnFor(s)} className="inline-flex items-center gap-1 text-amber-600 hover:text-amber-700 text-sm">
                           <Undo2 size={14} /> Return
                         </button>

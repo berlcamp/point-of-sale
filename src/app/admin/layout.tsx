@@ -12,6 +12,7 @@ export default async function AdminLayout({
   if (!profile) redirect("/login");
   if (profile.role === "super_admin") redirect("/super-admin");
   if (profile.role === "cashier") redirect("/");
+  if (profile.role === "booth_cashier") redirect("/cashier");
   if (!profile.company_id) redirect("/not-authorized");
 
   return (
