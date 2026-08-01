@@ -17,6 +17,7 @@ import {
   onThermalStatusChange,
   printThermal,
   reconnectThermalPrinter,
+  thermalConnectionDetail,
   thermalSupport,
 } from "@/lib/printer/thermal";
 import { encodeTestPrint } from "@/lib/printer/encode";
@@ -38,6 +39,9 @@ export function PrinterSettingsModal({
   const [busy, setBusy] = useState<"connect" | "test" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const support = thermalSupport();
+  // Re-read on every render rather than held in state: it only ever changes
+  // alongside `connected`, which already re-renders this component.
+  const connectionDetail = connected ? thermalConnectionDetail() : null;
 
   useEffect(() => {
     const off = onThermalStatusChange(setConnected);
@@ -90,8 +94,14 @@ export function PrinterSettingsModal({
           codepageMapping: device.codepageMapping,
         })
       );
-    } catch {
-      setError("Test print failed. Check the printer and try reconnecting.");
+    } catch (e) {
+      // The driver's messages name the actual fault (no paper, cover open,
+      // interface held by another app) — a generic line would hide all of it.
+      setError(
+        e instanceof Error && e.message
+          ? e.message
+          : "Test print failed. Check the printer and try reconnecting."
+      );
     } finally {
       setBusy(null);
     }
@@ -246,7 +256,14 @@ export function PrinterSettingsModal({
                 </p>
                 <p className="text-xs mt-0.5">
                   {connected ? (
-                    <span className="text-emerald-600 font-medium">● Connected</span>
+                    <>
+                      <span className="text-emerald-600 font-medium">● Connected</span>
+                      {connectionDetail && (
+                        <span className="block text-gray-400 font-code mt-0.5">
+                          {connectionDetail}
+                        </span>
+                      )}
+                    </>
                   ) : savedDevice ? (
                     <span className="text-amber-600">● Paired — not reachable right now</span>
                   ) : (
@@ -280,7 +297,7 @@ export function PrinterSettingsModal({
             <p className="text-xs text-gray-500 leading-relaxed">
               {settings.mode === "bluetooth"
                 ? "Turn on the printer, enable Bluetooth on this device, then tap Pair and choose your printer (often listed as Printer001, XP-58 or similar)."
-                : "Plug the printer into this device with the USB cable, then tap Pair and choose it from the list."}
+                : "Plug the printer in and switch it on, then tap Pair and choose it from the list. It is usually named after its board rather than the brand on the case — micro-printer, POS-58 and XP-… are all normal. If this computer already has the same printer installed as a system printer, remove it there first, or that driver will hold on to it."}
             </p>
           </div>
         )}

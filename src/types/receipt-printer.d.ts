@@ -98,8 +98,80 @@ declare module "@point-of-sale/webusb-receipt-printer" {
   }
 }
 
-// Web Bluetooth / WebUSB aren't in lib.dom — declare just enough for support checks.
+// Web Bluetooth isn't in lib.dom — a support check is all we need for it.
 interface Navigator {
   bluetooth?: unknown;
-  usb?: unknown;
+  // Absent on browsers without WebUSB (Safari, Firefox) — always support-check
+  // before reaching for it.
+  usb?: USB;
+}
+
+// WebUSB isn't in lib.dom either, and our own ESC/POS driver (lib/printer/
+// usb-escpos.ts) drives the device directly, so declare the surface it uses.
+interface USBEndpoint {
+  endpointNumber: number;
+  direction: "in" | "out";
+  type: "bulk" | "interrupt" | "isochronous";
+  packetSize: number;
+}
+
+interface USBAlternateInterface {
+  alternateSetting: number;
+  interfaceClass: number;
+  interfaceSubclass: number;
+  interfaceProtocol: number;
+  endpoints: USBEndpoint[];
+}
+
+interface USBInterface {
+  interfaceNumber: number;
+  alternate: USBAlternateInterface;
+  alternates: USBAlternateInterface[];
+  claimed: boolean;
+}
+
+interface USBConfiguration {
+  configurationValue: number;
+  interfaces: USBInterface[];
+}
+
+interface USBOutTransferResult {
+  bytesWritten: number;
+  status: "ok" | "stall";
+}
+
+interface USBDevice {
+  vendorId: number;
+  productId: number;
+  manufacturerName?: string;
+  productName?: string;
+  serialNumber?: string;
+  opened: boolean;
+  configuration: USBConfiguration | null;
+  configurations: USBConfiguration[];
+  open(): Promise<void>;
+  close(): Promise<void>;
+  selectConfiguration(configurationValue: number): Promise<void>;
+  claimInterface(interfaceNumber: number): Promise<void>;
+  releaseInterface(interfaceNumber: number): Promise<void>;
+  selectAlternateInterface(
+    interfaceNumber: number,
+    alternateSetting: number
+  ): Promise<void>;
+  transferOut(endpointNumber: number, data: BufferSource): Promise<USBOutTransferResult>;
+}
+
+interface USBConnectionEvent extends Event {
+  device: USBDevice;
+}
+
+interface USB {
+  getDevices(): Promise<USBDevice[]>;
+  requestDevice(options: {
+    filters: { vendorId?: number; productId?: number; classCode?: number }[];
+  }): Promise<USBDevice>;
+  addEventListener(
+    type: "connect" | "disconnect",
+    listener: (event: USBConnectionEvent) => void
+  ): void;
 }

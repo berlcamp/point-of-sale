@@ -45,13 +45,21 @@ async function getDriver(mode: "bluetooth" | "usb"): Promise<Driver> {
   if (driver && connectedDevice) {
     await driver.disconnect().catch(() => {});
   }
-  // Dynamic import: both packages touch `navigator` APIs, so only load them
-  // in the browser once a thermal mode is actually used.
-  const mod =
-    mode === "bluetooth"
-      ? await import("@point-of-sale/webbluetooth-receipt-printer")
-      : await import("@point-of-sale/webusb-receipt-printer");
-  driver = new mod.default();
+  // Dynamic import: these touch `navigator` APIs, so only load them in the
+  // browser once a thermal mode is actually used.
+  //
+  // USB deliberately does NOT use @point-of-sale/webusb-receipt-printer: its
+  // vendor-ID allowlist hides every no-name 58mm printer, which is most of what
+  // our clients own. usb-escpos.ts offers any device and finds the bulk
+  // endpoint itself. Bluetooth keeps the upstream driver — pairing there is
+  // filtered by GATT service, not by vendor.
+  if (mode === "usb") {
+    const { GenericUsbEscPosPrinter } = await import("@/lib/printer/usb-escpos");
+    driver = new GenericUsbEscPosPrinter();
+  } else {
+    const mod = await import("@point-of-sale/webbluetooth-receipt-printer");
+    driver = new mod.default();
+  }
   driverMode = mode;
   driver.addEventListener("connected", (device) => {
     connectedDevice = device;
@@ -85,7 +93,15 @@ export async function connectThermalPrinter(
   }
   const d = await getDriver(mode);
   connectedDevice = null;
-  await d.connect();
+  try {
+    await d.connect();
+  } catch (e) {
+    // Cancelling the browser's picker (or closing it with nothing listed)
+    // raises NotFoundError. That is not a failure worth an error banner — the
+    // caller reports "no printer selected" for a null result.
+    if (e instanceof DOMException && e.name === "NotFoundError") return null;
+    throw e;
+  }
   await settle();
   if (connectedDevice) {
     const settings = loadPrinterSettings();
@@ -118,6 +134,14 @@ export async function reconnectThermalPrinter(
 export async function printThermal(data: Uint8Array): Promise<void> {
   if (!driver || !connectedDevice) throw new Error("Thermal printer is not connected");
   await driver.print(data);
+}
+
+// USB only: which interface/endpoint the receipts are being written to. Shown
+// in printer settings so a terminal that pairs but never prints can be
+// diagnosed on site.
+export function thermalConnectionDetail(): string | null {
+  const d = driver as { endpointSummary?: string | null } | null;
+  return d?.endpointSummary ?? null;
 }
 
 export async function forgetThermalPrinter() {
