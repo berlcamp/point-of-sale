@@ -2,6 +2,8 @@
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { formatMoney } from "@/lib/config";
+import { formatQty, stepQty } from "@/lib/quantity";
+import { QuantityInput } from "@/components/pos/QuantityInput";
 import type { Product } from "@/lib/types";
 import { CheckCircle2, Plus, Search } from "lucide-react";
 
@@ -96,11 +98,12 @@ export const ProductSearch = forwardRef<HTMLInputElement, Props>(
         e.preventDefault();
         setActiveIndex((i) => Math.max(i - 1, 0));
       } else if (e.key === "ArrowRight" && active) {
+        // Arrows always move by whole units, even on a fractional quantity.
         e.preventDefault();
-        patchSel(active, { qty: getSel(active).qty + 1 });
+        patchSel(active, { qty: stepQty(getSel(active).qty, 1) });
       } else if (e.key === "ArrowLeft" && active) {
         e.preventDefault();
-        patchSel(active, { qty: Math.max(1, getSel(active).qty - 1) });
+        patchSel(active, { qty: stepQty(getSel(active).qty, -1) });
       }
     };
 
@@ -120,7 +123,7 @@ export const ProductSearch = forwardRef<HTMLInputElement, Props>(
           </div>
           {hasQuery && filtered.length > 0 && (
             <div className="mt-2 text-xs text-gray-400">
-              ↑↓ to select · ←→ to set quantity · Enter to add
+              ↑↓ to select · ←→ for whole units · type a decimal like .25 · Enter to add
             </div>
           )}
           {justAdded && (
@@ -185,6 +188,7 @@ const ProductRow = forwardRef<
 ) {
   const units = product.units ?? [];
   const { unitName, qty } = selection;
+  const selectedUnit = units.find((u) => u.unit_name === unitName) ?? units[0];
 
   const stock = Number(product.inventory?.quantity ?? 0);
   const low = stock <= Number(product.inventory?.low_stock ?? 0);
@@ -202,9 +206,17 @@ const ProductRow = forwardRef<
           {product.sku}
           {product.barcode ? ` · ${product.barcode}` : ""}
           <span className={`ml-2 font-medium ${low ? "text-red-600" : "text-green-600"}`}>
-            {stock} in stock
+            {formatQty(stock)} in stock
           </span>
         </div>
+        {selectedUnit && (
+          <div className="text-sm mt-0.5">
+            <span className="text-gray-500">per {selectedUnit.unit_name}</span>
+            <span className="ml-1.5 font-medium text-gray-900 font-amount">
+              {formatMoney(selectedUnit.price, currency)}
+            </span>
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {units.length > 1 && (
@@ -220,11 +232,10 @@ const ProductRow = forwardRef<
             ))}
           </select>
         )}
-        <input
-          type="number"
-          min={1}
+        <QuantityInput
           value={qty}
-          onChange={(e) => onQtyChange(Math.max(1, Number(e.target.value) || 1))}
+          onChange={onQtyChange}
+          ariaLabel={`Quantity for ${product.name}`}
           className="w-16 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-center"
         />
         <button

@@ -25,6 +25,7 @@ import { applyReceiptWidth, loadPrinterSettings } from "@/lib/printer/settings";
 import { reconnectThermalPrinter } from "@/lib/printer/thermal";
 import { hasPin } from "@/lib/auth/local";
 import { DEFAULT_TERMINAL_ID, formatMoney } from "@/lib/config";
+import { roundQty } from "@/lib/quantity";
 import type { CartItem, Product, CreateSalePayload, Membership, Role } from "@/lib/types";
 import { CompanySwitcher } from "@/components/CompanySwitcher";
 import { Wifi, WifiOff, RefreshCw, Lock, KeyRound, Keyboard, Printer, X } from "lucide-react";
@@ -181,11 +182,13 @@ export function POSClient({ companyId, companyName, currency, userId, userName, 
     setCart((prev) => {
       const idx = prev.findIndex((i) => i.product_id === product.id && i.unit_name === unitName);
       if (idx >= 0) {
-        return prev.map((i, x) =>
-          x === idx
-            ? { ...i, quantity: i.quantity + quantity, total: (i.quantity + quantity) * i.price - i.discount }
-            : i
-        );
+        return prev.map((i, x) => {
+          if (x !== idx) return i;
+          // Fractional quantities add up, so keep the running total snapped to
+          // the precision the sale is stored at.
+          const merged = roundQty(i.quantity + quantity);
+          return { ...i, quantity: merged, total: merged * i.price - i.discount };
+        });
       }
       return [
         ...prev,

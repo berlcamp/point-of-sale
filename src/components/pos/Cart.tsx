@@ -1,6 +1,8 @@
 "use client";
 
 import { formatMoney } from "@/lib/config";
+import { stepQty } from "@/lib/quantity";
+import { QuantityInput } from "@/components/pos/QuantityInput";
 import type { CartItem } from "@/lib/types";
 import { Minus, Plus, X, ShoppingCart } from "lucide-react";
 
@@ -40,20 +42,19 @@ export function Cart({ items, currency, subtotal, onUpdateItem, onRemoveItem, on
                 </div>
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={() => onUpdateItem(i, { quantity: Math.max(1, item.quantity - 1) })}
+                    onClick={() => onUpdateItem(i, { quantity: stepQty(item.quantity, -1) })}
                     className="p-1 rounded border border-gray-200 text-gray-500 hover:bg-gray-50"
                   >
                     <Minus size={14} />
                   </button>
-                  <input
-                    type="number"
-                    min={1}
+                  <QuantityInput
                     value={item.quantity}
-                    onChange={(e) => onUpdateItem(i, { quantity: Math.max(1, Number(e.target.value) || 1) })}
-                    className="w-12 text-center border border-gray-200 rounded py-1 text-sm"
+                    onChange={(quantity) => onUpdateItem(i, { quantity })}
+                    ariaLabel={`Quantity for ${item.product_name}`}
+                    className="w-14 text-center border border-gray-200 rounded py-1 text-sm"
                   />
                   <button
-                    onClick={() => onUpdateItem(i, { quantity: item.quantity + 1 })}
+                    onClick={() => onUpdateItem(i, { quantity: stepQty(item.quantity, 1) })}
                     className="p-1 rounded border border-gray-200 text-gray-500 hover:bg-gray-50"
                   >
                     <Plus size={14} />
