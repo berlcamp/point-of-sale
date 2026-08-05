@@ -98,7 +98,7 @@ export const ROLE_LABELS: Record<string, string> = {
   super_admin: "Super Admin",
   admin: "Admin",
   manager: "Manager",
-  cashier: "Cashier",
+  cashier: "Customer Representative",
   booth_cashier: "Booth Cashier",
 };
 

@@ -138,7 +138,7 @@ export function UsersManager() {
                     >
                       <option value="admin">Admin</option>
                       <option value="manager">Manager</option>
-                      <option value="cashier">Cashier</option>
+                      <option value="cashier">Customer Representative</option>
                       <option value="booth_cashier">Booth Cashier</option>
                     </select>
                   </td>
@@ -286,7 +286,7 @@ function InviteForm({
             onChange={(e) => setRole(e.target.value as Role)}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
           >
-            <option value="cashier">Cashier</option>
+            <option value="cashier">Customer Representative</option>
             <option value="booth_cashier">Booth Cashier</option>
             <option value="manager">Manager</option>
             <option value="admin">Admin</option>

@@ -366,7 +366,7 @@ function MembershipsModal({
               >
                 <option value="admin">Admin</option>
                 <option value="manager">Manager</option>
-                <option value="cashier">Cashier</option>
+                <option value="cashier">Customer Representative</option>
                 <option value="booth_cashier">Booth Cashier</option>
               </select>
               <button
@@ -412,7 +412,7 @@ function MembershipsModal({
                 value={addRole}
                 onChange={(e) => setAddRole(e.target.value as Role)}
               >
-                <option value="cashier">Cashier</option>
+                <option value="cashier">Customer Representative</option>
                 <option value="booth_cashier">Booth Cashier</option>
                 <option value="manager">Manager</option>
                 <option value="admin">Admin</option>
@@ -525,7 +525,7 @@ function InviteModal({
             value={role}
             onChange={(e) => setRole(e.target.value as Role)}
           >
-            <option value="cashier">Cashier</option>
+            <option value="cashier">Customer Representative</option>
             <option value="booth_cashier">Booth Cashier</option>
             <option value="manager">Manager</option>
             <option value="admin">Admin</option>
