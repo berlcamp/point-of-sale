@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { useAdmin } from "@/components/admin/AdminProvider";
 import { formatMoney } from "@/lib/config";
 import {
@@ -67,16 +68,21 @@ export function DashboardManager() {
         supabase.rpc("report_sales_by_day", { p_days: chartDays }),
         supabase.rpc("report_top_products", { p_from: start, p_to: end, p_limit: 5 }),
         supabase.rpc("report_payment_breakdown", { p_from: start, p_to: end }),
-        supabase
-          .from("products")
-          .select("id, name, inventory(quantity, low_stock)")
-          .order("name"),
+        // Low stock is filtered client-side, so a truncated page would hide
+        // alerts for every product past the cut-off.
+        fetchAllRows((from, to) =>
+          supabase
+            .from("products")
+            .select("id, name, inventory(quantity, low_stock)")
+            .order("name")
+            .range(from, to)
+        ),
       ]);
       setSummary(s.data ?? null);
       setByDay((d.data ?? []).map((r: { date: string; revenue: number }) => ({ date: r.date.slice(5), revenue: Number(r.revenue) })));
       setTop((t.data ?? []).map((r: { product_name: string; revenue: number }) => ({ product_name: r.product_name, revenue: Number(r.revenue) })));
       setPayments((p.data ?? []).map((r: { method: string; total: number }) => ({ method: r.method, total: Number(r.total) })));
-      const low = ((ls.data ?? []) as {
+      const low = (ls as {
         id: string;
         name: string;
         inventory: { quantity: number; low_stock: number } | { quantity: number; low_stock: number }[] | null;

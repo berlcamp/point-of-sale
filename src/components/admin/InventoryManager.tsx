@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { useAdmin } from "@/components/admin/AdminProvider";
 import { Modal } from "@/components/Modal";
 import { formatMoney } from "@/lib/config";
@@ -36,16 +37,19 @@ export function InventoryManager() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    let q = supabase
-      .from("products")
-      .select("id, name, sku, inventory(quantity, low_stock)")
-      .eq("is_active", true)
-      .order("name");
-    if (search.trim()) {
-      const s = `%${search.trim()}%`;
-      q = q.or(`name.ilike.${s},sku.ilike.${s}`);
-    }
-    const { data } = await q;
+    const data = await fetchAllRows((from, to) => {
+      let q = supabase
+        .from("products")
+        .select("id, name, sku, inventory(quantity, low_stock)")
+        .eq("is_active", true)
+        .order("name")
+        .range(from, to);
+      if (search.trim()) {
+        const s = `%${search.trim()}%`;
+        q = q.or(`name.ilike.${s},sku.ilike.${s}`);
+      }
+      return q;
+    });
     setRows(
       (data ?? []).map((p: {
         id: string;

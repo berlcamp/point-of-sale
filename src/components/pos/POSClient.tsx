@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { SignOutButton } from "@/components/SignOutButton";
 import { ProductSearch } from "@/components/pos/ProductSearch";
 import { Cart } from "@/components/pos/Cart";
@@ -118,12 +119,16 @@ export function POSClient({
 
   const loadProducts = useCallback(async () => {
     if (isOnline()) {
-      const { data } = await supabase
-        .from("products")
-        .select("*, units:product_units(*), inventory(quantity, low_stock)")
-        .eq("is_active", true)
-        .order("name");
-      const list = (data as Product[]) ?? [];
+      // The register searches the catalog offline, so it needs every active
+      // product cached — not just the first page PostgREST hands back.
+      const list = await fetchAllRows<Product>((from, to) =>
+        supabase
+          .from("products")
+          .select("*, units:product_units(*), inventory(quantity, low_stock)")
+          .eq("is_active", true)
+          .order("name")
+          .range(from, to)
+      );
       setProducts(list);
       cacheProducts(companyId, list);
     } else {
