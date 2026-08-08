@@ -16,6 +16,7 @@ import { formatMoney, paymentDetail } from "@/lib/config";
 import type { Membership, Role, Sale, SaleItem, TransactionFlow } from "@/lib/types";
 import {
   Banknote,
+  Coins,
   LayoutDashboard,
   Printer,
   RefreshCw,
@@ -141,6 +142,18 @@ export function CashierClient({
           <div className="text-right text-sm">
             <div className="text-blue-200">{userName}</div>
           </div>
+          {/* Outside the canLeaveBooth gate on purpose: remitting what you took
+              is part of working the booth, so the booth cashier — who has no
+              other way out of this screen — needs it too. */}
+          <Link
+            href="/collections"
+            className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm"
+            title="Collections & remittance sheet"
+          >
+            <span className="inline-flex items-center gap-1">
+              <Coins size={14} /> Collections
+            </span>
+          </Link>
           {canLeaveBooth && (
             <>
               <Link href="/" className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm">

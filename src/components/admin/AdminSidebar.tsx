@@ -17,6 +17,7 @@ import {
   Settings,
   Store,
   Banknote,
+  Coins,
 } from "lucide-react";
 
 // The booth sits in the main nav for everyone who is allowed to work it,
@@ -30,6 +31,8 @@ const navItems = [
   { href: "/admin/products", label: "Products", Icon: Package, roles: ["admin", "manager"] },
   { href: "/admin/inventory", label: "Inventory", Icon: Warehouse, roles: ["admin", "manager"] },
   { href: "/admin/reports", label: "Reports", Icon: TrendingUp, roles: ["admin", "manager"] },
+  // Not under /admin — the booth cashier needs it too. See middleware.
+  { href: "/collections", label: "Collections", Icon: Coins, roles: ["admin", "manager"] },
   { href: "/admin/collectibles", label: "Collectibles", Icon: HandCoins, roles: ["admin", "manager"] },
   { href: "/admin/audit", label: "Audit Log", Icon: ScrollText, roles: ["admin"] },
   { href: "/admin/users", label: "Users", Icon: Users, roles: ["admin"] },

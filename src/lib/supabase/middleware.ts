@@ -23,13 +23,17 @@ function canAccess(role: Role, pathname: string): boolean {
   const isSuper = pathname === "/super-admin" || pathname.startsWith("/super-admin/");
   const isPos = pathname === "/";
   const isBooth = pathname === "/cashier" || pathname.startsWith("/cashier/");
+  // The remittance sheet. Outside /admin on purpose: the booth cashier counts
+  // the drawer, so the one role that must reach it is the one barred from
+  // every /admin path.
+  const isCollections = pathname === "/collections";
 
   if (role === "super_admin") return isSuper;
   if (role === "cashier") return isPos;
-  // The booth cashier handles money, never the cart.
-  if (role === "booth_cashier") return isBooth;
+  // The booth cashier handles money, never the cart — and remits what they took.
+  if (role === "booth_cashier") return isBooth || isCollections;
   // admin & manager — they can also cover the booth.
-  return isPos || isAdmin || isBooth;
+  return isPos || isAdmin || isBooth || isCollections;
 }
 
 export async function updateSession(request: NextRequest) {

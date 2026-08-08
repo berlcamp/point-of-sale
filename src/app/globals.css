@@ -124,4 +124,33 @@ input[type='number'] {
   .no-print {
     display: none !important;
   }
+
+  /* Second print mode: a full-page document, not a till slip. Used by the
+     collections remittance sheet, which is signed by two people and filed —
+     it needs bond paper and a signature block, where .receipt-print needs a
+     58mm roll. The two never appear on the same page, so they can share the
+     `body * { visibility: hidden }` rule above and each reveal themselves. */
+  .print-sheet,
+  .print-sheet * {
+    visibility: visible;
+  }
+  .print-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+
+  /* A NAMED page, so the sheet's paper size applies only to the sheet and
+     leaves receipt printing on whatever the roll printer reports. A browser
+     that ignores `page:` still prints correctly — it just uses the default
+     paper. Long bond (8.5×13) works too: content sized for the shorter sheet
+     always fits the longer one. */
+  .print-sheet {
+    page: sheet;
+  }
+  @page sheet {
+    size: 8.5in 11in;
+    margin: 10mm;
+  }
 }
