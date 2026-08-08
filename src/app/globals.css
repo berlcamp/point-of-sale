@@ -101,6 +101,12 @@ input[type='number'] {
 
 /* Print styles for receipts */
 @media print {
+  /* `body *` below never matches body itself, so the app's grey chrome kept
+     painting behind the sheet. Only visible when the user ticks "Background
+     graphics", but a remittance sheet on grey is not what anyone wants filed. */
+  body {
+    background: #fff;
+  }
   body * {
     visibility: hidden;
   }
@@ -134,23 +140,27 @@ input[type='number'] {
   .print-sheet * {
     visibility: visible;
   }
-  .print-sheet {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-  }
 
-  /* A NAMED page, so the sheet's paper size applies only to the sheet and
-     leaves receipt printing on whatever the roll printer reports. A browser
-     that ignores `page:` still prints correctly — it just uses the default
-     paper. Long bond (8.5×13) works too: content sized for the shorter sheet
-     always fits the longer one. */
+  /* Deliberately NOT `position: absolute` like .receipt-print above. An
+     absolutely positioned box is laid out against the page BOX, so `left: 0;
+     width: 100%` puts it outside the @page margin — the sheet printed
+     edge-to-edge with the right-hand amount column clipped off the paper.
+     The sheet doesn't need the positioning anyway: everything above it on this
+     route is `print:hidden` (display: none), so it already starts at the top of
+     the flow, and staying in flow is what lets @page apply its margin to every
+     page rather than only the first. */
   .print-sheet {
+    /* A NAMED page, so the sheet's paper size and margins apply only to the
+       sheet and leave receipt printing on whatever the roll printer reports. A
+       browser that ignores `page:` still prints correctly — it just uses the
+       default paper. Long bond (8.5×13) works too: content sized for the
+       shorter sheet always fits the longer one. */
     page: sheet;
   }
   @page sheet {
     size: 8.5in 11in;
-    margin: 10mm;
+    /* Slightly deeper top/bottom than sides: the header and the signature
+       block are what must not crowd the paper edge. */
+    margin: 12mm 10mm;
   }
 }
